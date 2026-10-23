@@ -435,7 +435,7 @@ for i=1,38 do
  drift.Material=Enum.Material.Snow
 end
 local pond=part("Ледяной каток",Vector3.new(58,1,45),Vector3.new(-105,1.15,75),Color3.fromRGB(102,183,213),Enum.Material.Ice)
-pond.Reflectance=0.28
+pond.Reflectance=0.55
 pond.CustomPhysicalProperties=PhysicalProperties.new(0.7,0.005,0.05)
 sign(pond,"КАТОК • коньки у входа",Vector3.new(0,4,0))
 for _,dx in ipairs({-29,29}) do
@@ -479,7 +479,7 @@ prompt(rack,"Надеть / снять коньки",function(player)
   local foot=character:FindFirstChild(side.."Foot") or character:FindFirstChild(side.." Leg")
   if foot then
    local offset=foot.Name==side.."Foot" and -0.45 or -1.1
-   local blade=part("Лезвие конька",Vector3.new(0.12,0.25,1.6),Vector3.zero,Color3.fromRGB(202,219,230),Enum.Material.Metal,gear)
+   local blade=part("Лезвие конька",Vector3.new(0.18,0.3,1.9),Vector3.zero,Color3.fromRGB(202,219,230),Enum.Material.Metal,gear)
    blade.CFrame=foot.CFrame*CFrame.new(0,offset,0)
    blade.Anchored,blade.CanCollide,blade.Massless=false,false,true
    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=foot,blade,blade
@@ -497,10 +497,24 @@ prompt(rack,"Надеть / снять коньки",function(player)
    spray.Speed,spray.Size=NumberRange.new(2,5),NumberSequence.new(0.08)
    spray.Acceleration,spray.SpreadAngle=Vector3.new(0,-10,0),Vector2.new(40,40)
    spray.Parent=left
-   local boot=part("Ботинок конька",Vector3.new(0.85,0.35,1.3),Vector3.zero,bootColor,nil,gear)
-   boot.CFrame=foot.CFrame*CFrame.new(0,offset+0.25,0)
+   local boot=part("Ботинок конька",Vector3.new(1.1,0.85,1.8),Vector3.zero,bootColor,nil,gear)
+   boot.Shape=Enum.PartType.Ball
+   boot.CFrame=foot.CFrame*CFrame.new(0,offset+0.55,-0.1)
    boot.Anchored,boot.CanCollide,boot.Massless=false,false,true
    local binding=Instance.new("WeldConstraint") binding.Part0,binding.Part1,binding.Parent=foot,boot,boot
+   local function bootDetail(name,size,position,color)
+    local detail=part(name,size,Vector3.zero,color,nil,gear)
+    detail.CFrame=foot.CFrame*CFrame.new(position)
+    detail.Anchored,detail.CanCollide,detail.Massless=false,false,true
+    local link=Instance.new("WeldConstraint") link.Part0,link.Part1,link.Parent=foot,detail,detail
+    return detail
+   end
+   bootDetail("Подошва конька",Vector3.new(1.08,0.16,1.8),Vector3.new(0,offset+0.21,-0.1),Color3.fromRGB(43,47,58))
+   local cuff=bootDetail("Высокий манжет",Vector3.new(0.98,0.85,0.95),Vector3.new(0,offset+1.02,0.25),bootColor)
+   cuff.Shape=Enum.PartType.Ball
+   for i=1,3 do
+    bootDetail("Шнуровка",Vector3.new(0.6,0.06,0.1),Vector3.new(0,offset+0.92,0.35-i*0.25),snow)
+   end
   end
  end
  player:SetAttribute("SkatesEquipped",true)
