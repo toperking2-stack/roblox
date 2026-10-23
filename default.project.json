@@ -24,9 +24,9 @@
         "$properties": {
           "Anchored": true,
           "Size": [
-            180,
+            400,
             2,
-            150
+            360
           ],
           "Position": [
             0,
