@@ -1,5 +1,6 @@
 -- Deterministic API mock: construction and gameplay logic, not Roblox physics/rendering.
 local objects={}
+local mockKeys={}
 local clockNow=0
 local realOs=os
 os={clock=function() return clockNow end}
@@ -58,7 +59,7 @@ local events={}
 local children={}
 local services={}
 local methods={}
-local eventNames={Touched=true,Triggered=true,OnServerEvent=true,PlayerRemoving=true,PlayerAdded=true,Heartbeat=true,PreSimulation=true,ChildAdded=true,CharacterAdded=true,Activated=true,Unequipped=true,InputBegan=true}
+local eventNames={Touched=true,Triggered=true,OnServerEvent=true,PlayerRemoving=true,PlayerAdded=true,Heartbeat=true,PreSimulation=true,ChildAdded=true,CharacterAdded=true,Activated=true,Unequipped=true,InputBegan=true,InputEnded=true,MouseButton1Down=true,MouseButton1Up=true}
 function methods:GetPropertyChangedSignal(name)
  local key='Changed:'..name
  if not events[self][key] then events[self][key]=signal() end
@@ -119,6 +120,8 @@ function methods:Destroy()
 end
 function methods:Sit(humanoid) self.Occupant=humanoid humanoid.Sit=true end
 function methods:Play() self.Played=true end
+function methods:GetFocusedTextBox() return nil end
+function methods:IsKeyDown(key) return mockKeys[key]==true end
 function methods:Stop() self.Played=false end
 function methods:ChangeState(value) self.State=value end
 function methods:GetPlayers()
@@ -131,6 +134,8 @@ function methods:TakeDamage(amount) self.Health=math.max(0,self.Health-amount) e
 local defaults={Parent=true,PrimaryPart=true,Occupant=true,Character=true}
 local objectMeta={
  __index=function(t,k)
+  local stored=properties[t][k]
+  if stored~=nil then return stored end
   if methods[k] then return methods[k] end
   if eventNames[k] then if not events[t][k] then events[t][k]=signal() end return events[t][k] end
   local value=properties[t][k]
@@ -155,6 +160,7 @@ local objectMeta={
 Instance={new=function(class)
  local v=setmetatable({},objectMeta)
  properties[v]={ClassName=class,Name=class,attributes={},Position=Vector3.zero,CFrame=CFrame.new(),AssemblyLinearVelocity=Vector3.zero,Grip=CFrame.new()}
+ if class=="Humanoid" then properties[v].PlatformStand=false properties[v].Sit=false properties[v].WalkSpeed=16 properties[v].AutoRotate=true end
  events[v]={} children[v]={}
  table.insert(objects,v)
  return v
@@ -166,7 +172,13 @@ workspace=Instance.new('Workspace')
 workspace.Gravity=196.2
 local nextRayHit=nil
 local defaultRayHit=nil
-function methods:Raycast() local hit=nextRayHit nextRayHit=nil return hit or defaultRayHit end
+function methods:Raycast(origin,direction,params)
+ if params and params.FilterDescendantsInstances and params.FilterDescendantsInstances[1] then
+  local first=params.FilterDescendantsInstances[1]
+  if string.match(first.Name,'^Олень ') then return nil end
+ end
+ local hit=nextRayHit nextRayHit=nil return hit or defaultRayHit
+end
 Random={new=function(seed)
  local n=seed or 1
  return {NextNumber=function(_,a,b) n=(n*16807)%2147483647 return a+(b-a)*(n/2147483647) end}

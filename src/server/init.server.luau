@@ -11,6 +11,7 @@ local snow = Color3.fromRGB(239, 247, 255)
 local red = Color3.fromRGB(181, 48, 58)
 local green = Color3.fromRGB(31, 100, 78)
 local gold = Color3.fromRGB(255, 200, 91)
+local removeSkates
 local function part(name, size, position, color, material, parent)
  local p = Instance.new("Part")
  p.Name, p.Size, p.Position = name, size, position
@@ -108,10 +109,12 @@ local function sound(on,id,volume)
  audio:Play()
  Debris:AddItem(audio,4)
 end
-local function prompt(on, text, callback)
+local function prompt(on, text, callback, keyName)
  local p = Instance.new("ProximityPrompt")
  p.ActionText, p.ObjectText, p.MaxActivationDistance = text, on.Name, 10
  p.RequiresLineOfSight = false
+ p.KeyboardKeyCode=Enum.KeyCode[keyName or "E"]
+ if keyName then p.UIOffset=Vector2.new(0,({F=-60,R=0,T=60})[keyName] or -120) end
  p.Parent = on
  p.Triggered:Connect(function(player)
   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -381,6 +384,23 @@ sign(santa,"ДЕД МОРОЗ • E — поговорить",Vector3.new(0,8.5,
 prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaGreeting",(player:GetAttribute("SantaGreeting") or 0)+1) end)
 -- Animated reindeer follow small woodland routes, clear of houses and sled runouts.
 local reindeer={}
+local mountedDeer={}
+local tourSleds={}
+local rideInput=Instance.new("RemoteEvent")
+rideInput.Name,rideInput.Parent="ReindeerInput",ReplicatedStorage
+rideInput.OnServerEvent:Connect(function(player,direction)
+ local deer=mountedDeer[player]
+ if not deer or typeof(direction)~="Vector3" or direction.X~=direction.X or direction.Z~=direction.Z or direction.Magnitude>1.1 then return end
+ deer.input=Vector3.new(direction.X,0,direction.Z)
+ deer.inputUntil=os.clock()+0.5
+end)
+local function detachSled(deer)
+ if not deer.tow then return end
+ local sled=deer.tow
+ for _,object in deer.towParts do object:Destroy() end
+ sled:SetAttribute("TowedBy",nil)
+ deer.tow,deer.towParts=nil,nil
+end
 for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.new(155,3.2,-140),Vector3.new(-160,3.2,-30)} do
  local model=Instance.new("Model") model.Name,model.Parent="Олень "..index,world
  local body=round("Тело оленя",Vector3.new(3.5,3.1,6),center,Color3.fromRGB(139,91,56),model)
@@ -407,19 +427,139 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
    table.insert(legs,{part=leg,hoof=hoof,offset=offset,phase=side*(z>0 and 1 or -1)})
   end
  end
- table.insert(reindeer,{model=model,center=center,phase=index*1.6,legs=legs})
+ local saddle=Instance.new("Seat")
+ saddle.Name,saddle.Size,saddle.Anchored,saddle.CanTouch,saddle.CanCollide="Седло оленя",Vector3.new(2.2,0.35,2.5),true,false,false
+ saddle.CFrame,saddle.Color,saddle.Parent=CFrame.new(center+Vector3.new(0,1.5,0)),red,model
+ local deer={model=model,center=center,phase=index*1.6,legs=legs,seat=saddle,input=Vector3.zero,inputUntil=0}
+ table.insert(reindeer,deer)
+ -- Each meadow has a small usable touring sled ready to hitch.
+ local sled=Instance.new("Model") sled.Name,sled.Parent="Прогулочные санки",world
+ local sledSeat=Instance.new("Seat")
+ sledSeat.Name,sledSeat.Size,sledSeat.Anchored,sledSeat.CanTouch="Сиденье прогулочных санок",Vector3.new(3,0.5,3),true,false
+ sledSeat.CFrame,sledSeat.Color,sledSeat.Parent=CFrame.new(center+Vector3.new(6,-1.6,6)),green,sled
+ sled.PrimaryPart=sledSeat
+ for _,side in ipairs({-1,1}) do
+  local runner=part("Полозья",Vector3.new(0.25,0.3,4.4),sledSeat.Position+Vector3.new(side*1.4,-0.7,0),gold,Enum.Material.Metal,sled)
+  runner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.05)
+  runner.Anchored,runner.Massless=false,true
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=sledSeat,runner,runner
+ end
+ sledSeat.Anchored=false
+ sledSeat:SetNetworkOwner(nil)
+ sled:SetAttribute("Towable",true)
+ table.insert(tourSleds,sled)
+ prompt(sledSeat,"Сесть в санки • прыжок — выйти",function(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or sledSeat.Occupant then return end
+  if removeSkates then removeSkates(player) end
+  character:PivotTo(sledSeat.CFrame*CFrame.new(0,2,0))
+  sledSeat:Sit(humanoid)
+ end)
+ prompt(body,"Погладить оленя",function(player)
+  deer.petUntil=os.clock()+2
+  player:SetAttribute("WinterMessage","Олень доволен! ♥ F — поманить, R — сесть, T — санки")
+  local gui=Instance.new("BillboardGui") gui.Size,gui.StudsOffset,gui.Parent=UDim2.fromOffset(70,50),Vector3.new(0,5,0),body
+  local heart=Instance.new("TextLabel") heart.Size,heart.BackgroundTransparency,heart.Text,heart.TextSize=UDim2.fromScale(1,1),1,"♥",36
+  heart.TextColor3,heart.Parent=red,gui
+  Debris:AddItem(gui,2)
+ end,"E")
+ prompt(body,"Поманить морковкой / остановить",function(player)
+  if deer.rider and deer.rider~=player then return end
+  if deer.follow==player then deer.follow=nil player:SetAttribute("WinterMessage","Олень больше не следует за тобой") return end
+  if deer.follow and deer.follow~=player then return end
+  if not player:GetAttribute("InventoryCarrot") then player:SetAttribute("WinterMessage","Сначала подбери морковку на поляне снеговиков") return end
+  deer.follow=player
+  player:SetAttribute("WinterMessage","Олень идёт за морковкой! Обходи дома и деревья, F — остановить")
+ end,"F")
+ prompt(body,"Сесть верхом • прыжок — слезть",function(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or saddle.Occupant or mountedDeer[player] then return end
+  if deer.follow and deer.follow~=player then return end
+  if removeSkates then removeSkates(player) end
+  deer.follow=nil deer.rider=player mountedDeer[player]=deer
+  player:SetAttribute("RidingReindeer",true)
+  character:PivotTo(saddle.CFrame*CFrame.new(0,2,0))
+  saddle:Sit(humanoid)
+  player:SetAttribute("WinterMessage","Верхом: WASD / стрелки на экране • прыжок — слезть • T — санки")
+ end,"R")
+ saddle:GetPropertyChangedSignal("Occupant"):Connect(function()
+  if not saddle.Occupant and deer.rider then
+   deer.rider:SetAttribute("RidingReindeer",false)
+   mountedDeer[deer.rider]=nil
+   deer.rider=nil deer.input=Vector3.zero
+  end
+ end)
+ prompt(body,"Прицепить / отцепить ближайшие санки",function(player)
+  if (deer.rider and deer.rider~=player) or (deer.follow and deer.follow~=player) then return end
+  if deer.tow then detachSled(deer) player:SetAttribute("WinterMessage","Санки отцеплены") return end
+  local closest,distance=nil,20
+  for _,candidate in world:GetChildren() do
+   if candidate:IsA("Model") and candidate:GetAttribute("Towable") and not candidate:GetAttribute("TowedBy") and candidate.PrimaryPart then
+    local d=(candidate.PrimaryPart.Position-body.Position).Magnitude
+    if d<distance then closest,distance=candidate,d end
+   end
+  end
+  if not closest then player:SetAttribute("WinterMessage","Подведи оленя к свободным санкам: расстояние до 20 шагов") return end
+  local a,b=Instance.new("Attachment"),Instance.new("Attachment")
+  a.Position,b.Position=Vector3.new(0,-1.5,3),Vector3.new(0,0,-1.8)
+  a.Parent,b.Parent=body,closest.PrimaryPart
+  local rope=Instance.new("RopeConstraint")
+  rope.Name,rope.Attachment0,rope.Attachment1="Упряжь",a,b
+  rope.Length,rope.Thickness,rope.Visible=8,0.12,true
+  rope.Parent=body
+  closest:SetAttribute("TowedBy",model.Name)
+  closest.PrimaryPart:SetNetworkOwner(nil)
+  deer.tow,deer.towParts=closest,{rope,a,b}
+  player:SetAttribute("WinterMessage","Санки прицеплены! Садись верхом или веди оленя морковкой")
+ end,"T")
 end
 local deerTime,deerTick=0,0
 RunService.Heartbeat:Connect(function(dt)
  deerTime+=dt deerTick+=dt
  if deerTick<0.1 then return end deerTick=0
  for _,deer in reindeer do
+  local current=deer.model:GetPivot().Position
   local a=deerTime*0.16+deer.phase
-  local pos=deer.center+Vector3.new(math.cos(a)*9,math.sin(deerTime*3)*0.05,math.sin(a)*9)
-  local frame=CFrame.lookAt(pos,pos+Vector3.new(-math.sin(a),0,math.cos(a)))
+  local target=deer.center+Vector3.new(math.cos(a)*9,0,math.sin(a)*9)
+  local speed=2.2
+  if deer.rider then
+   local rider=deer.rider
+   local humanoid=rider.Character and rider.Character:FindFirstChildOfClass("Humanoid")
+   if not humanoid or humanoid.Health<=0 or deer.seat.Occupant~=humanoid then
+    rider:SetAttribute("RidingReindeer",false) mountedDeer[rider]=nil deer.rider=nil
+   else
+    local input=os.clock()<deer.inputUntil and deer.input or Vector3.zero
+    target=current+input*4 speed=13
+   end
+  elseif deer.follow then
+   local root=deer.follow.Character and deer.follow.Character:FindFirstChild("HumanoidRootPart")
+   if not root or not deer.follow:GetAttribute("InventoryCarrot") then deer.follow=nil
+   else
+    target=Vector3.new(root.Position.X,3.2,root.Position.Z)
+    if (target-current).Magnitude<6 then target=current end
+    speed=7
+   end
+  end
+  if deer.petUntil and os.clock()<deer.petUntil and not deer.rider then target=current end
+  local delta=Vector3.new(target.X-current.X,0,target.Z-current.Z)
+  local movement=delta.Magnitude>0.01 and delta.Unit*math.min(delta.Magnitude,speed*0.1) or Vector3.zero
+  local params=RaycastParams.new()
+  params.FilterType=Enum.RaycastFilterType.Exclude
+  local exclude={deer.model}
+  if deer.follow and deer.follow.Character then table.insert(exclude,deer.follow.Character) end
+  if deer.rider and deer.rider.Character then table.insert(exclude,deer.rider.Character) end
+  if deer.tow then table.insert(exclude,deer.tow) end
+  params.FilterDescendantsInstances=exclude
+  if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero end
+  local pos=Vector3.new(math.clamp(current.X+movement.X,-180,180),3.2,math.clamp(current.Z+movement.Z,-160,160))
+  if math.abs(pos.X+105)<32 and math.abs(pos.Z-75)<26 then pos=current movement=Vector3.zero end
+  local direction=movement.Magnitude>0.01 and movement.Unit or deer.model:GetPivot().LookVector
+  local frame=CFrame.lookAt(pos,pos+direction)
   deer.model:PivotTo(frame)
   for _,leg in deer.legs do
-   leg.part.CFrame=frame*CFrame.new(leg.offset)*CFrame.Angles(math.sin(deerTime*4+leg.phase*math.pi/2)*0.25,0,math.pi/2)
+   leg.part.CFrame=frame*CFrame.new(leg.offset)*CFrame.Angles((movement.Magnitude>0.01 and math.sin(deerTime*4+leg.phase*math.pi/2)*0.25 or 0),0,math.pi/2)
    leg.hoof.CFrame=leg.part.CFrame*CFrame.new(-0.8,0,0)*CFrame.Angles(0,0,-math.pi/2)
   end
  end
@@ -439,12 +579,18 @@ pond.Reflectance=0.55
 pond.CustomPhysicalProperties=PhysicalProperties.new(0.7,0.005,0.05)
 sign(pond,"КАТОК • коньки у входа",Vector3.new(0,4,0))
 for _,dx in ipairs({-29,29}) do
- part("Бортик катка",Vector3.new(1,1,47),Vector3.new(-105+dx,2,75),snow)
+ part("Бортик катка",Vector3.new(1,4.8,47),Vector3.new(-105+dx,4.05,75),snow)
 end
-for _,dx in ipairs({-19,19}) do
- part("Передний бортик",Vector3.new(20,1,1),Vector3.new(-105+dx,2,97.5),snow)
+for _,dx in ipairs({-16.5,16.5}) do
+ part("Передний бортик",Vector3.new(25,4.8,1),Vector3.new(-105+dx,4.05,97.5),snow)
 end
-part("Задний бортик",Vector3.new(59,1,1),Vector3.new(-105,2,52.5),snow)
+part("Задний бортик",Vector3.new(59,4.8,1),Vector3.new(-105,4.05,52.5),snow)
+for _,fence in world:GetChildren() do
+ if fence.Name=="Бортик катка" or fence.Name=="Передний бортик" or fence.Name=="Задний бортик" then
+  fence.Material,fence.Transparency=Enum.Material.Glass,0.35
+  part("Поручень катка",Vector3.new(fence.Size.X+0.2,0.35,fence.Size.Z+0.2),fence.Position+Vector3.new(0,2.4,0),red)
+ end
+end
 part("Ступень катка",Vector3.new(16,0.8,4),Vector3.new(-105,0.4,100),snow)
 for i=1,7 do
  local line=part("Узор на льду",Vector3.new(0.08,0.025,10+i),Vector3.new(-128+i*6,1.68,66+i%3*7),Color3.fromRGB(192,231,244),Enum.Material.Glass)
@@ -458,11 +604,22 @@ local skateColors={Color3.fromRGB(206,61,80),Color3.fromRGB(62,145,212),Color3.f
 local skateRandom=Random.new()
 local lastSkateColor={}
 
-local function removeSkates(player)
+local wasOnIce={}
+removeSkates=function(player)
  player:SetAttribute("SkatesEquipped",false)
+ wasOnIce[player]=nil
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if humanoid then humanoid.WalkSpeed=16 humanoid.AutoRotate=true humanoid.PlatformStand=false end
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local force=root and root:FindFirstChild("SkatingMomentum")
+ if force then force:Destroy() end
  local gear=player.Character and player.Character:FindFirstChild("SkateGear")
  if gear then gear:Destroy() end
 end
+local removeSkatesEvent=Instance.new("RemoteEvent")
+removeSkatesEvent.Name,removeSkatesEvent.Parent="RemoveSkates",ReplicatedStorage
+removeSkatesEvent.OnServerEvent:Connect(removeSkates)
 prompt(rack,"Надеть / снять коньки",function(player)
  if player:GetAttribute("SkatesEquipped") then removeSkates(player) return end
  local character=player.Character
@@ -528,6 +685,14 @@ RunService.Heartbeat:Connect(function()
   if root and humanoid and humanoid.Health>0 then
    local pos=root.Position
    local onIce=math.abs(pos.X+105)<28 and math.abs(pos.Z-75)<21 and pos.Y>1 and pos.Y<9
+   local inBounds=math.abs(pos.X+105)<28.5 and math.abs(pos.Z-75)<21.5
+   if player:GetAttribute("SkatesEquipped") then
+    if inBounds then wasOnIce[player]=true elseif wasOnIce[player] then removeSkates(player) end
+   end
+   if not inBounds and humanoid.PlatformStand and slipStates[player] then
+    humanoid.PlatformStand=false humanoid.WalkSpeed=16 humanoid.AutoRotate=true
+    root.AssemblyAngularVelocity=Vector3.zero
+   end
    if onIce and not player:GetAttribute("SkatesEquipped") and os.clock()-(slipStates[player] or -10)>3 then
     slipStates[player]=os.clock()
     humanoid.PlatformStand=true
@@ -545,9 +710,15 @@ RunService.Heartbeat:Connect(function()
   end
  end
 end)
-Players.PlayerAdded:Connect(function(player)
- player.CharacterAdded:Connect(function() player:SetAttribute("SkatesEquipped",false) slipStates[player]=nil end)
-end)
+local function initializePlayer(player)
+ player.CharacterAdded:Connect(function()
+  player:SetAttribute("SkatesEquipped",false)
+  player:SetAttribute("RidingReindeer",false)
+  slipStates[player],wasOnIce[player]=nil,nil
+ end)
+end
+Players.PlayerAdded:Connect(initializePlayer)
+for _,player in Players:GetPlayers() do initializePlayer(player) end
 -- Route rides are server-controlled; seats cannot be flung by network physics.
 local riding={}
 local function hill(x,z,height,length,title)
@@ -596,6 +767,7 @@ local function hill(x,z,height,length,title)
  local function release(speed)
   if freeSled then return end
   freeSled=true
+  sled:SetAttribute("Towable",true)
   for _,p in sled:GetDescendants() do
    if p:IsA("BasePart") and p~=seat then
     local weld=Instance.new("WeldConstraint")
@@ -642,10 +814,11 @@ local function hill(x,z,height,length,title)
  -- Explicit retrieval preserves the sled at the runout until requested.
  local returnPost=part("Возврат санок",Vector3.new(2,2,2),start.Position+Vector3.new(5,0,0),green)
  prompt(returnPost,"Вернуть свободные санки наверх",function()
-  if not freeSled or seat.Occupant or seat.AssemblyLinearVelocity.Magnitude>1.5 then return end
+  if sled:GetAttribute("TowedBy") or not freeSled or seat.Occupant or seat.AssemblyLinearVelocity.Magnitude>1.5 then return end
   for _,weld in seat:GetChildren() do if weld:IsA("WeldConstraint") then weld:Destroy() end end
   for _,p in sled:GetDescendants() do if p:IsA("BasePart") then p.Anchored=true end end
   sled:PivotTo(home)
+  sled:SetAttribute("Towable",false)
   freeSled,busy=false,false
  end)
 end
@@ -897,5 +1070,12 @@ Players.PlayerRemoving:Connect(function(player)
   builtByPlayer[player]=nil
  end
  slipStates[player]=nil
- lastSkateColor[player]=nil
+ lastSkateColor[player]=nil wasOnIce[player]=nil
+ for _,deer in reindeer do
+  local involved=deer.follow==player or deer.rider==player
+  if deer.follow==player then deer.follow=nil end
+  if deer.rider==player then local occupant=deer.seat.Occupant if occupant then occupant.Sit=false end deer.rider=nil end
+  if involved and deer.tow then detachSled(deer) end
+ end
+ mountedDeer[player]=nil
 end)

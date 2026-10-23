@@ -57,9 +57,9 @@ speech.BackgroundTransparency,speech.TextWrapped,speech.TextSize=1,true,17
 speech.Font,speech.TextColor3=Enum.Font.Gotham,Color3.fromRGB(255,239,214)
 speech.Parent=dialogue
 local answers={
- {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься!"},
+ {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься! Для выхода есть проход у проката; X снимает коньки в любом месте."},
  {"Как собрать снеговика?","🎅 Дед Мороз\nНайди веточки, морковку и ведёрко. Накатай ком до 4 метров и принеси его на поляну снеговиков. Можно построить несколько — у каждого своя подсказка удаления."},
- {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. Ты можешь вернуться в дом и согреться чаем. Олени остаются в лесу — приманивать их к камину нельзя."},
+ {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. Ты можешь вернуться в дом и согреться чаем. Их можно погладить, поманить морковкой, оседлать и прицепить санки. Гуляйте по открытым дорожкам."},
  {"До встречи!",false},
 }
 for i,answer in answers do
@@ -127,9 +127,72 @@ local function finishSkating()
  if leanJoint and leanJoint.Parent then leanJoint.C0=leanBase end
  leanJoint,leanBase=nil,nil
  if skateForce then skateForce:Destroy() skateForce=nil end
- if skateHumanoid and skateHumanoid.Parent then skateHumanoid.WalkSpeed=oldWalk skateHumanoid.AutoRotate=oldRotate end
+ if skateHumanoid and skateHumanoid.Parent then skateHumanoid.WalkSpeed=math.max(oldWalk or 16,16) skateHumanoid.AutoRotate=oldRotate end
  skateHumanoid=nil skateVelocity=Vector3.zero
 end
+local removeButton=Instance.new("TextButton")
+removeButton.Size,removeButton.Position=UDim2.fromOffset(170,36),UDim2.new(1,-185,1,-215)
+removeButton.Text,removeButton.TextSize="Снять коньки • X",14
+removeButton.BackgroundColor3,removeButton.TextColor3=Color3.fromRGB(40,70,86),Color3.fromRGB(255,245,220)
+removeButton.Visible,removeButton.Parent=false,gui
+local function requestRemoveSkates()
+ finishSkating()
+ ReplicatedStorage:WaitForChild("RemoveSkates"):FireServer()
+end
+removeButton.Activated:Connect(requestRemoveSkates)
+player:GetAttributeChangedSignal("SkatesEquipped"):Connect(function()
+ removeButton.Visible=player:GetAttribute("SkatesEquipped")==true
+ if not removeButton.Visible then finishSkating() end
+end)
+UserInputService.InputBegan:Connect(function(input,processed)
+ if not processed and input.KeyCode==Enum.KeyCode.X then requestRemoveSkates() end
+end)
+-- Mobile riding controls plus camera-relative keyboard movement, independent of seated MoveDirection.
+local rideButtons={}
+local touchDirection=Vector3.zero
+for i,entry in {{"▲",Vector3.new(0,0,-1)},{"◀",Vector3.new(-1,0,0)},{"▼",Vector3.new(0,0,1)},{"▶",Vector3.new(1,0,0)}} do
+ local button=Instance.new("TextButton")
+ button.Size,button.Position=UDim2.fromOffset(45,45),UDim2.new(1,-215+(i-1)*49,1,-155)
+ button.Text,button.TextSize,button.Visible=entry[1],24,false
+ button.BackgroundColor3,button.TextColor3=Color3.fromRGB(45,77,81),Color3.fromRGB(255,245,220)
+ button.Parent=gui
+ button.MouseButton1Down:Connect(function() touchDirection=entry[2] end)
+ button.MouseButton1Up:Connect(function() touchDirection=Vector3.zero end)
+ table.insert(rideButtons,button)
+end
+UserInputService.InputEnded:Connect(function(input)
+ if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then touchDirection=Vector3.zero end
+end)
+player:GetAttributeChangedSignal("RidingReindeer"):Connect(function()
+ local riding=player:GetAttribute("RidingReindeer")==true
+ for _,button in rideButtons do button.Visible=riding end
+ touchDirection=Vector3.zero
+end)
+local rideTimer=0
+RunService.PreSimulation:Connect(function(dt)
+ if not player:GetAttribute("RidingReindeer") then rideTimer=0 return end
+ rideTimer+=dt
+ if rideTimer<0.1 then return end rideTimer=0
+ local direction=touchDirection
+ if not UserInputService:GetFocusedTextBox() then
+  local x,z=0,0
+  if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then z-=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then z+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then x-=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then x+=1 end
+  direction+=Vector3.new(x,0,z)
+ end
+ local camera=workspace.CurrentCamera
+ if camera and direction.Magnitude>0 then
+  local forward=Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z)
+  if forward.Magnitude<0.01 then forward=Vector3.new(0,0,-1) end
+  forward=forward.Unit
+  local right=Vector3.new(-forward.Z,0,forward.X)
+  direction=right*direction.X-forward*direction.Z
+  if direction.Magnitude>1 then direction=direction.Unit end
+ end
+ ReplicatedStorage:WaitForChild("ReindeerInput"):FireServer(direction)
+end)
 RunService.PreSimulation:Connect(function(dt)
  local character=player.Character
  local root=character and character:FindFirstChild("HumanoidRootPart")
@@ -140,7 +203,7 @@ RunService.PreSimulation:Connect(function(dt)
  if skateHumanoid~=humanoid then
   finishSkating()
   skateHumanoid,oldWalk,oldRotate=humanoid,humanoid.WalkSpeed,humanoid.AutoRotate
-  humanoid.WalkSpeed,humanoid.AutoRotate=0,false
+  humanoid.WalkSpeed,humanoid.AutoRotate=16,false
   skateForce=Instance.new("BodyVelocity")
   skateForce.Name,skateForce.MaxForce,skateForce.P="SkatingMomentum",Vector3.new(50000,0,50000),4000
   skateForce.Parent=root
