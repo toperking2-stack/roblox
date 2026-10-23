@@ -45,9 +45,106 @@ drop.Visible=false
 UserInputService.InputBegan:Connect(function(input,processed)
  if not processed and input.KeyCode==Enum.KeyCode.Q then dropBall() end
 end)
+local dialogue=Instance.new("Frame")
+dialogue.Size,dialogue.Position,dialogue.AnchorPoint=UDim2.new(0.9,0,0,340),UDim2.fromScale(0.5,0.5),Vector2.new(0.5,0.5)
+dialogue.BackgroundColor3,dialogue.Visible=Color3.fromRGB(24,47,57),false
+dialogue.Parent=gui
+local limit=Instance.new("UISizeConstraint") limit.MaxSize=Vector2.new(430,340) limit.Parent=dialogue
+local rounding=Instance.new("UICorner") rounding.CornerRadius=UDim.new(0,14) rounding.Parent=dialogue
+local speech=Instance.new("TextLabel")
+speech.Size,speech.Position=UDim2.new(1,-32,0,142),UDim2.fromOffset(16,12)
+speech.BackgroundTransparency,speech.TextWrapped,speech.TextSize=1,true,17
+speech.Font,speech.TextColor3=Enum.Font.Gotham,Color3.fromRGB(255,239,214)
+speech.Parent=dialogue
+local answers={
+ {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься!"},
+ {"Как собрать снеговика?","🎅 Дед Мороз\nНайди веточки, морковку и ведёрко. Накатай ком до 4 метров и принеси его на поляну снеговиков. Можно построить несколько — у каждого своя подсказка удаления."},
+ {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. А потом согрейся чаем у камина."},
+ {"До встречи!",false},
+}
+for i,answer in answers do
+ local button=Instance.new("TextButton")
+ button.Size,button.Position=UDim2.new(1,-32,0,36),UDim2.fromOffset(16,154+(i-1)*43)
+ button.BackgroundColor3,button.TextColor3=Color3.fromRGB(50,91,86),Color3.fromRGB(255,246,226)
+ button.Text,button.TextSize,button.Font=answer[1],15,Enum.Font.GothamBold
+ button.Parent=dialogue
+ button.Activated:Connect(function()
+  if answer[2] then speech.Text=answer[2] else dialogue.Visible=false end
+ end)
+end
 player:GetAttributeChangedSignal("SantaGreeting"):Connect(function()
- label.Text="Санта: С праздником! Прокатись на санках и согрейся у камина!"
- task.delay(6,update)
+ speech.Text="🎅 Дед Мороз\nС праздником, друг! Заходи погреться, прокатись по льду или слепи снеговика. О чём хочешь спросить?"
+ dialogue.Visible=true
+end)
+-- Public-domain Jingle Bells melody, arranged from built-in bell-like notes.
+local SoundService=game:GetService("SoundService")
+local musicGroup=Instance.new("SoundGroup")
+musicGroup.Name,musicGroup.Volume,musicGroup.Parent="HolidayMusic",0.055,SoundService
+local musicToggle=Instance.new("TextButton")
+musicToggle.Size,musicToggle.Position=UDim2.fromOffset(144,32),UDim2.new(1,-160,0,14)
+musicToggle.Text,musicToggle.TextSize="♫ Музыка: вкл",14
+musicToggle.BackgroundColor3,musicToggle.TextColor3=Color3.fromRGB(28,55,67),Color3.fromRGB(255,239,214)
+musicToggle.Parent=gui
+musicToggle.Activated:Connect(function()
+ musicGroup.Volume=musicGroup.Volume>0 and 0 or 0.055
+ musicToggle.Text=musicGroup.Volume>0 and "♫ Музыка: вкл" or "♫ Музыка: выкл"
+end)
+local tune={
+ {76,1},{76,1},{76,2},{76,1},{76,1},{76,2},
+ {76,1},{79,1},{72,1.5},{74,0.5},{76,4},
+ {77,1},{77,1},{77,1.5},{77,0.5},{77,1},{76,1},{76,1},{76,0.5},{76,0.5},
+ {76,1},{74,1},{74,1},{76,1},{74,2},{79,2},
+ {76,1},{76,1},{76,2},{76,1},{76,1},{76,2},
+ {76,1},{79,1},{72,1.5},{74,0.5},{76,4},
+ {77,1},{77,1},{77,1},{77,1},{77,1},{76,1},{76,1},{76,0.5},{76,0.5},
+ {79,1},{79,1},{77,1},{74,1},{72,4},
+}
+task.spawn(function()
+ while gui.Parent do
+  for _,note in tune do
+   if musicGroup.Volume>0 then
+    local chime=Instance.new("Sound")
+    chime.SoundId,chime.Volume,chime.SoundGroup="rbxasset://sounds/electronicpingshort.wav",0.6,musicGroup
+    chime.PlaybackSpeed=2^((note[1]-76)/12)
+    chime.Parent=SoundService
+    chime:Play()
+    game:GetService("Debris"):AddItem(chime,2.5)
+   end
+   task.wait(note[2]*0.32)
+  end
+  task.wait(3)
+ end
+end)
+-- Client owns character physics, so skating input is applied here rather than reading
+-- Humanoid.MoveDirection on the server (that property does not replicate).
+local skateVelocity=Vector3.zero
+local skateHumanoid,skateForce,oldWalk,oldRotate
+local function finishSkating()
+ if skateForce then skateForce:Destroy() skateForce=nil end
+ if skateHumanoid and skateHumanoid.Parent then skateHumanoid.WalkSpeed=oldWalk skateHumanoid.AutoRotate=oldRotate end
+ skateHumanoid=nil skateVelocity=Vector3.zero
+end
+RunService.PreSimulation:Connect(function(dt)
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ local pos=root and root.Position
+ local onIce=pos and math.abs(pos.X+105)<28 and math.abs(pos.Z-75)<21 and pos.Y>1 and pos.Y<9
+ if not humanoid or humanoid.Health<=0 or not onIce or not player:GetAttribute("SkatesEquipped") then finishSkating() return end
+ if skateHumanoid~=humanoid then
+  finishSkating()
+  skateHumanoid,oldWalk,oldRotate=humanoid,humanoid.WalkSpeed,humanoid.AutoRotate
+  humanoid.WalkSpeed,humanoid.AutoRotate=0,false
+  skateForce=Instance.new("BodyVelocity")
+  skateForce.Name,skateForce.MaxForce,skateForce.P="SkatingMomentum",Vector3.new(50000,0,50000),4000
+  skateForce.Parent=root
+ end
+ local input=humanoid.MoveDirection
+ local desired=Vector3.new(input.X,0,input.Z)*27
+ local response=input.Magnitude>0.05 and 3.4 or 0.35
+ skateVelocity=skateVelocity:Lerp(desired,1-math.exp(-dt*response))
+ skateForce.Velocity=skateVelocity
+ if skateVelocity.Magnitude>1 then root.CFrame=CFrame.lookAt(pos,pos+skateVelocity) end
 end)
 local boundTools=setmetatable({}, {__mode="k"})
 local function playSound(parent,id,volume,speed)

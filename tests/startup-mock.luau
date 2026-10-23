@@ -6,13 +6,13 @@ os={clock=function() return clockNow end}
 local threads={}
 local delayed={}
 local function resume(thread,...)
- local ok,err=coroutine.resume(thread,...)
+ local ok,err,delay=coroutine.resume(thread,...)
  assert(ok,err)
- if coroutine.status(thread)~='dead' then threads[thread]=true else threads[thread]=nil end
+ if coroutine.status(thread)~='dead' then threads[thread]=clockNow+(err=='sleep' and (delay or 0) or 0) else threads[thread]=nil end
 end
 task={
  spawn=function(fn) local thread=coroutine.create(fn) resume(thread) return thread end,
- wait=function() return coroutine.yield() end,
+ wait=function(seconds) return coroutine.yield("sleep",seconds or 0) end,
  delay=function(seconds,fn) table.insert(delayed,{at=clockNow+seconds,fn=fn}) end,
 }
 local function signal()
@@ -55,18 +55,17 @@ Enum=setmetatable({},enumMeta)
 UDim2={new=function(...) return {...} end,fromOffset=function(...) return {...} end,fromScale=function(...) return {...} end}
 local properties={}
 local events={}
+local children={}
 local services={}
 local methods={}
-local eventNames={Touched=true,Triggered=true,OnServerEvent=true,PlayerRemoving=true,Heartbeat=true,PreSimulation=true,ChildAdded=true,CharacterAdded=true,Activated=true,Unequipped=true,InputBegan=true}
+local eventNames={Touched=true,Triggered=true,OnServerEvent=true,PlayerRemoving=true,PlayerAdded=true,Heartbeat=true,PreSimulation=true,ChildAdded=true,CharacterAdded=true,Activated=true,Unequipped=true,InputBegan=true}
 function methods:GetPropertyChangedSignal(name)
  local key='Changed:'..name
  if not events[self][key] then events[self][key]=signal() end
  return events[self][key]
 end
 function methods:GetChildren()
- local result={}
- for _,o in objects do if properties[o].Parent==self then table.insert(result,o) end end
- return result
+ return table.clone(children[self])
 end
 function methods:GetDescendants()
  local result={}
@@ -120,6 +119,11 @@ function methods:Destroy()
 end
 function methods:Sit(humanoid) self.Occupant=humanoid humanoid.Sit=true end
 function methods:Play() self.Played=true end
+function methods:Stop() self.Played=false end
+function methods:ChangeState(value) self.State=value end
+function methods:GetPlayers()
+ local result={} for _,o in self:GetChildren() do if o.ClassName=='Player' then table.insert(result,o) end end return result
+end
 function methods:Clear() self.Cleared=true end
 function methods:Emit(count) self.Emitted=count end
 function methods:SetNetworkOwner() end
@@ -135,6 +139,11 @@ local objectMeta={
   error('Unexpected mock access: '..properties[t].ClassName..'.'..k)
  end,
  __newindex=function(t,k,v)
+  if k=='Parent' then
+   local old=properties[t].Parent
+   if old then local index=table.find(children[old],t) if index then table.remove(children[old],index) end end
+   if v then table.insert(children[v],t) end
+  end
   properties[t][k]=v
   if k=='Position' then properties[t].CFrame=CFrame.new(v) end
   if k=='CFrame' then properties[t].Position=v.Position end
@@ -146,11 +155,11 @@ local objectMeta={
 Instance={new=function(class)
  local v=setmetatable({},objectMeta)
  properties[v]={ClassName=class,Name=class,attributes={},Position=Vector3.zero,CFrame=CFrame.new(),AssemblyLinearVelocity=Vector3.zero,Grip=CFrame.new()}
- events[v]={}
+ events[v]={} children[v]={}
  table.insert(objects,v)
  return v
 end}
-for _,name in {'Players','ReplicatedStorage','Debris','TweenService','RunService','UserInputService'} do services[name]=Instance.new(name) end
+for _,name in {'Players','ReplicatedStorage','Debris','TweenService','RunService','UserInputService','SoundService'} do services[name]=Instance.new(name) end
 function methods:AddItem(object,seconds) task.delay(seconds,function() object:Destroy() end) end
 game={GetService=function(_,name) return assert(services[name],name) end}
 workspace=Instance.new('Workspace')
@@ -177,7 +186,7 @@ local function advance(seconds)
   for _,fn in due do fn() end
   local snapshot={}
   for thread in threads do table.insert(snapshot,thread) end
-  for _,thread in snapshot do if threads[thread] then resume(thread,0.05) end end
+  for _,thread in snapshot do if threads[thread] and threads[thread]<=clockNow then resume(thread,0.05) end end
  end
 end
 -- The test runner appends the server source and assertions below.

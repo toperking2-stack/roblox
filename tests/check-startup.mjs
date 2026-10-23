@@ -24,7 +24,7 @@ local function named(name)
  error('missing object '..name)
 end
 local player=Instance.new('Player')
-player.Name,player.UserId='TestPlayer',42
+player.Name,player.UserId,player.Parent='TestPlayer',42,services.Players
 local character=Instance.new('Model')
 character.Name,character.Parent='Character',workspace
 local root=Instance.new('Part')
@@ -101,6 +101,50 @@ assert(seat.Occupant==humanoid and humanoid.Sit,'rider remains seated after desc
 seat.Occupant=nil humanoid.Sit=false
 advance(1)
 assert(seat.Anchored==false,'jumping does not remove or reset sled')
+-- New detailed collectibles are composed of rounded parts, not a single block.
+assert(#named('Палочки'):GetDescendants()>=3,'branched sticks')
+assert(#named('Морковка'):GetDescendants()>=15,'tapered carrot and leaves')
+assert(#named('Ведёрко'):GetDescendants()>=45,'hollow bucket walls, rim and handle')
+for _,o in objects do
+ if o.ClassName=='Sound' then assert(o.SoundId~='rbxasset://sounds/impact_water.mp3','watery hit effect removed') end
+end
+-- A second recipe must preserve the first snowman; removal only removes that figure.
+for _,name in {'Палочки','Морковка','Ведёрко'} do interact(named(name)) end
+interact(named('Заготовка снежного кома'))
+defaultRayHit={Instance=snowGround,Position=Vector3.zero,Normal=Vector3.new(0,1,0)}
+advance(0.1)
+for _=1,36 do root.Position+=Vector3.new(2,0,0) advance(0.1) end
+interact(station)
+assert(#builtByPlayer[player]==2 and builtByPlayer[player][1].Parent,'second snowman preserves first')
+local first=builtByPlayer[player][1]
+interact(first.PrimaryPart)
+assert(#builtByPlayer[player]==1 and builtByPlayer[player][1].Parent,'individual snowman removal')
+defaultRayHit=nil
+-- Deer follow a route; Father Frost opens dialogue only after close interaction.
+assert(#reindeer==4,'four reindeer')
+local deerBefore=reindeer[1].model:GetPivot().Position
+advance(1)
+assert((reindeer[1].model:GetPivot().Position-deerBefore).Magnitude>0.05,'reindeer move along woodland routes')
+interact(santa)
+assert(player:GetAttribute('SantaGreeting')==1,'Father Frost dialogue trigger')
+-- Ice is above snow, unshod players fall and recover; the rack equips visible blades.
+assert(pond.Position.Y-pond.Size.Y/2>0,'ice surface is not buried under snow')
+root.Position=Vector3.new(-105,5,75)
+advance(0.1)
+assert(humanoid.PlatformStand,'without skates player slips')
+advance(1.2)
+assert(humanoid.PlatformStand==false,'slip recovers control')
+for _,side in {'Left','Right'} do
+ local foot=Instance.new('Part') foot.Name,foot.Parent=side..'Foot',character foot.Position=root.Position
+end
+interact(rack)
+assert(player:GetAttribute('SkatesEquipped')==true,'rack equips skates')
+assert(#character:FindFirstChild('SkateGear'):GetChildren()==4,'two boots and two blades')
+root.Position=Vector3.new(-105,5,75)
+advance(0.5)
+assert(humanoid.PlatformStand==false,'skates prevent slipping')
+interact(rack)
+assert(player:GetAttribute('SkatesEquipped')==false and not character:FindFirstChild('SkateGear'),'rack unequips gear')
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -118,6 +162,7 @@ workspace.CurrentCamera={}
 local playerGui=Instance.new('Folder') playerGui.Name,playerGui.Parent='PlayerGui',player
 local shoulder=Instance.new('Motor6D') shoulder.Name,shoulder.C0,shoulder.Parent='RightShoulder',CFrame.new(),character
 humanoid.RigType=Enum.HumanoidRigType.R15
+humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.MoveDirection=16,true,Vector3.new(1,0,0)
 `;
  const clientChecks=`
 advance(2)
@@ -136,12 +181,36 @@ tea.Activated:Fire()
 advance(0.4)
 local soundsAfter=0 for _,o in objects do if o.ClassName=='Sound' then soundsAfter+=1 end end
 assert(soundsAfter>soundsBefore,'tea sip schedules audible effect')
-services.RunService.PreSimulation:Fire()
+services.RunService.PreSimulation:Fire(0.1)
 assert(tea.Grip~=teaGripBefore,'tea grip animation changes the actual held-tool pose')
 tea.Unequipped:Fire()
+-- Local movement input accelerates on ice; releasing input coasts, exiting restores walking.
+interact(rack)
+root.Position=Vector3.new(-105,5,75)
+services.RunService.PreSimulation:Fire(0.1)
+local force=assert(root:FindFirstChild('SkatingMomentum'),'skating force enabled')
+local speed=force.Velocity.Magnitude
+assert(speed>0,'movement input accelerates skates')
+humanoid.MoveDirection=Vector3.zero
+services.RunService.PreSimulation:Fire(0.1)
+assert(force.Velocity.Magnitude>0 and force.Velocity.Magnitude<speed,'skates coast when input is released')
+root.Position=Vector3.new(0,5,0)
+services.RunService.PreSimulation:Fire(0.1)
+assert(not root:FindFirstChild('SkatingMomentum') and humanoid.WalkSpeed==16,'leaving rink restores walking')
+-- Dialogue buttons and music mute are connected, not decorative UI.
+interact(santa)
+local dialog=named('Frame')
+assert(dialog.Visible,'Father Frost dialogue opens')
+local muted=false
+for _,o in objects do
+ if o.ClassName=='TextButton' and o.Text=='♫ Музыка: вкл' then
+  o.Activated:Fire() muted=true
+ end
+end
+assert(muted and named('HolidayMusic').Volume==0,'background melody can be muted')
 return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\ndo\n'+client+'\nend\n'+clientChecks;
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: equipped tool activation throws; tea use schedules sound and animates grip.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue and music mute.');
 } finally { state.destroy(); }
