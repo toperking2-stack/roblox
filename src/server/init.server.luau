@@ -25,13 +25,15 @@ local function ball(name, size, position, color)
 end
 local function sign(on, text, offset)
  local gui = Instance.new("BillboardGui")
- gui.Size, gui.StudsOffset = UDim2.fromOffset(300, 85), offset or Vector3.new(0,5,0)
- gui.MaxDistance = 100
+ gui.Size, gui.StudsOffset = UDim2.fromOffset(180, 44), offset or Vector3.new(0,5,0)
+ gui.MaxDistance = 32
+ gui.AlwaysOnTop = false
  gui.Parent = on
  local label = Instance.new("TextLabel")
  label.Size = UDim2.fromScale(1,1)
- label.BackgroundColor3, label.BackgroundTransparency = Color3.fromRGB(22,39,58), 0.2
- label.TextColor3, label.TextSize = snow, 19
+ label.BackgroundColor3, label.BackgroundTransparency = Color3.fromRGB(22,39,58), 1
+ label.TextColor3, label.TextSize = snow, 14
+ label.TextStrokeTransparency = 0.45
  label.Font, label.TextWrapped = Enum.Font.GothamBold, true
  label.Text = text
  label.Parent = gui
@@ -48,12 +50,25 @@ local function light(on, color, range, brightness)
  l.Color, l.Range, l.Brightness = color, range, brightness or 1
  l.Parent = on
 end
+-- Tapered circular tiers produce a fir silhouette without uploaded meshes.
 local function tree(x,z,height)
- part("Ствол", Vector3.new(2,height/2,2), Vector3.new(x,height/4,z), Color3.fromRGB(97,64,47), Enum.Material.Wood)
- for i=1,3 do
-  local width = height*(0.95-i*0.19)
-  local p = part("Еловая крона", Vector3.new(width,height/3,width), Vector3.new(x,height*(0.3+i*0.18),z),green)
-  part("Снег на ветках",Vector3.new(width+0.3,0.45,width+0.3),p.Position+Vector3.new(0,height/6,0),snow)
+ part("Ствол",Vector3.new(1.2,height*0.32,1.2),Vector3.new(x,height*0.16,z),Color3.fromRGB(97,64,47),Enum.Material.Wood)
+ for tier=0,3 do
+  local base=height*(0.16+tier*0.19)
+  local tierHeight=height*0.34
+  local radius=height*(0.29-tier*0.055)
+  for ring=0,7 do
+   local width=math.max(0.15,radius*2*(1-ring/8))
+   local thickness=tierHeight/8
+   local disc=part("Еловые ветви",Vector3.new(thickness+0.04,width,width),Vector3.new(x,base+ring*thickness,z),green)
+   disc.Shape=Enum.PartType.Cylinder
+   disc.Orientation=Vector3.new(0,0,90)
+   if ring==0 then
+    local cap=part("Снежная кайма",Vector3.new(0.18,width+0.1,width+0.1),disc.Position+Vector3.new(0,thickness/2,0),snow,Enum.Material.Snow)
+    cap.Shape=Enum.PartType.Cylinder
+    cap.Orientation=Vector3.new(0,0,90)
+   end
+  end
  end
 end
 part("Снежный остров",Vector3.new(180,5,150),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
@@ -67,12 +82,12 @@ tree(0,-12,27)
 for i=1,20 do
  local a=i*math.pi*2/20
  local y=5+(i%4)*4
- local r=9-y*0.2
+ local r=7-y*0.18
  local ornament=ball("Гирлянда",1,Vector3.new(math.cos(a)*r,y, -12+math.sin(a)*r),i%2==0 and gold or red)
  ornament.Material=Enum.Material.Neon
  if i%4==0 then light(ornament,gold,12) end
 end
-local star=ball("Звезда",2.5,Vector3.new(0,27,-12),gold)
+local star=ball("Звезда",2.5,Vector3.new(0,28,-12),gold)
 star.Material=Enum.Material.Neon
 light(star,gold,35,2)
 for i=1,8 do
@@ -82,6 +97,14 @@ for i=1,8 do
 end
 for i=1,14 do
  tree(-81+(i%2)*160,-65+math.floor((i-1)/2)*20,12+i%3*3)
+end
+for _,z in ipairs({-48,-25,0,25,48}) do
+ for _,x in ipairs({-9,9}) do
+  part("Фонарный столб",Vector3.new(0.5,7,0.5),Vector3.new(x,3.5,z),Color3.fromRGB(43,56,65),Enum.Material.Metal)
+  local lantern=part("Тёплый фонарь",Vector3.new(1.3,1.6,1.3),Vector3.new(x,7.5,z),Color3.fromRGB(255,215,153),Enum.Material.Neon)
+  part("Крышка фонаря",Vector3.new(1.8,0.3,1.8),Vector3.new(x,8.5,z),snow)
+  light(lantern,Color3.fromRGB(255,207,140),17,0.8)
+ end
 end
 -- Open doorway, usable interior and furniture.
 local function house(x,z,main)
@@ -97,7 +120,32 @@ local function house(x,z,main)
   light(w,gold,14,0.7)
  end
  part("Над дверью",Vector3.new(8,3,1),Vector3.new(x,10.5,z+13),brown)
- part("Снежная крыша",Vector3.new(31,2,29),Vector3.new(x,13,z),snow)
+ -- Pitched roof, gingerbread gables and icing trim.
+ for side=-1,1,2 do
+  local roof=part("Скат крыши",Vector3.new(18.5,1.2,30),Vector3.new(x+side*8,16.5,z),Color3.fromRGB(103,51,43),Enum.Material.WoodPlanks)
+  roof.Orientation=Vector3.new(0,0,-side*30)
+  local icing=part("Снег на крыше",Vector3.new(18.7,0.55,30.4),roof.Position+Vector3.new(0,0.85,0),snow,Enum.Material.Snow)
+  icing.Orientation=roof.Orientation
+  for _,edge in ipairs({-13,13}) do
+   part("Сахарная колонна",Vector3.new(0.7,12,0.7),Vector3.new(x+edge,6,z+side*13),snow)
+  end
+ end
+ for step=0,10 do
+  local width=28*(1-step/11)
+  for _,depth in ipairs({-13,13}) do
+   part("Пряничный фронтон",Vector3.new(width,0.68,1),Vector3.new(x,12+step*0.65,z+depth),brown)
+  end
+ end
+ part("Снежный конёк",Vector3.new(1,0.9,31),Vector3.new(x,21.7,z),snow)
+ for _,dx in ipairs({-9,9}) do
+  part("Переплёт окна",Vector3.new(0.22,4.3,0.25),Vector3.new(x+dx,7,z+13.7),snow)
+  part("Переплёт окна",Vector3.new(4.3,0.22,0.25),Vector3.new(x+dx,7,z+13.7),snow)
+  part("Подоконник",Vector3.new(5,0.4,1.2),Vector3.new(x+dx,4.8,z+13.7),snow)
+ end
+ part("Ковёр",Vector3.new(17,0.12,12),Vector3.new(x,1.08,z+1),red,Enum.Material.Fabric)
+ local chimney=part("Дымоход",Vector3.new(3,7,3),Vector3.new(x+8,20,z-7),Color3.fromRGB(113,65,58),Enum.Material.Brick)
+ local smoke=Instance.new("Smoke")
+ smoke.Size,smoke.Opacity,smoke.RiseVelocity,smoke.Parent=3,0.15,3,chimney
  for i=-3,3 do
   local bulb=ball("Лампочка",0.7,Vector3.new(x+i*4,11.5,z+14),i%2==0 and red or gold)
   bulb.Material=Enum.Material.Neon
@@ -143,7 +191,16 @@ for i=1,15 do
  local pos=Vector3.new(25+(i%2)*5,2+(i%3)*0.5,62-(i-1)*7.8)
  local p=part("Этап "..i,Vector3.new(6,1,6),pos,i%3==0 and green or (i%2==0 and snow or red),i%3==0 and Enum.Material.SmoothPlastic or Enum.Material.Ice)
  checkpoints[i]=pos+Vector3.new(0,4,0)
- sign(p,i==15 and "15 / 15 — ФИНИШ!" or tostring(i).." / 15",Vector3.new(0,2,0))
+ local badge=Instance.new("SurfaceGui")
+ badge.Face=Enum.NormalId.Top
+ badge.CanvasSize=Vector2.new(128,128)
+ badge.Parent=p
+ local number=Instance.new("TextLabel")
+ number.Size,number.BackgroundTransparency=UDim2.fromScale(1,1),1
+ number.Text,number.Font,number.TextSize=tostring(i),Enum.Font.GothamBold,72
+ number.TextColor3=snow
+ number.TextStrokeTransparency=0.6
+ number.Parent=badge
  p.Touched:Connect(function(hit)
   local player=Players:GetPlayerFromCharacter(hit.Parent)
   if not player then return end

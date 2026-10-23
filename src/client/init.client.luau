@@ -6,13 +6,16 @@ local gui=Instance.new("ScreenGui")
 gui.Name,gui.ResetOnSpawn="WinterHUD",false
 gui.Parent=player:WaitForChild("PlayerGui")
 local label=Instance.new("TextLabel")
-label.Size,label.Position=UDim2.new(0.8,0,0,76),UDim2.new(0.1,0,0,12)
+label.Size,label.Position=UDim2.new(0,310,0,54),UDim2.new(0,16,1,-118)
 label.BackgroundColor3,label.BackgroundTransparency=Color3.fromRGB(20,39,55),0.15
-label.TextColor3,label.Font,label.TextSize=Color3.fromRGB(255,239,205),Enum.Font.GothamBold,17
+label.TextColor3,label.Font,label.TextSize=Color3.fromRGB(255,239,205),Enum.Font.GothamBold,14
 label.TextWrapped=true
 label.Parent=gui
+local corner=Instance.new("UICorner")
+corner.CornerRadius=UDim.new(0,12)
+corner.Parent=label
 local function update()
- label.Text="❄ НОВОГОДНЯЯ ДЕРЕВНЯ ❄\nЭтап: "..tostring(player:GetAttribute("Checkpoint") or 0).." / 15 • E — взаимодействие • можно просто гулять"
+ label.Text="❄ НОВОГОДНЯЯ ДЕРЕВНЯ ❄\nЭтап: "..tostring(player:GetAttribute("Checkpoint") or 0).." / 15 • E — взаимодействие"
 end
 update()
 player:GetAttributeChangedSignal("Checkpoint"):Connect(update)
