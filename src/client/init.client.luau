@@ -4,6 +4,7 @@ local player=Players.LocalPlayer
 local mouse=player:GetMouse()
 local TweenService=game:GetService("TweenService")
 local UserInputService=game:GetService("UserInputService")
+local RunService=game:GetService("RunService")
 local gui=Instance.new("ScreenGui")
 gui.Name,gui.ResetOnSpawn="WinterHUD",false
 gui.Parent=player:WaitForChild("PlayerGui")
@@ -16,21 +17,60 @@ label.Parent=gui
 local corner=Instance.new("UICorner")
 corner.CornerRadius=UDim.new(0,12)
 corner.Parent=label
+local ingredientAttributes={["Палочки"]="InventorySticks",["Морковка"]="InventoryCarrot",["Ведёрко"]="InventoryBucket"}
 local function update()
- label.Text="❄ ЗИМНИЙ ПАРК ❄\nE — взаимодействие • выбери чай или снежки"
+ local size=player:GetAttribute("SnowSize") or 0
+ local found={}
+ for _,name in {"Палочки","Морковка","Ведёрко"} do
+  if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
+ end
+ label.Text="❄ ЗИМНИЙ ПАРК ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ if #found>0 then label.Text..="\n"..table.concat(found," • ") end
 end
+label.Size=UDim2.new(0,330,0,78)
 update()
+for _,name in {"SnowSize","InventorySticks","InventoryCarrot","InventoryBucket"} do player:GetAttributeChangedSignal(name):Connect(update) end
+player:GetAttributeChangedSignal("WinterMessage"):Connect(function()
+ label.Text=player:GetAttribute("WinterMessage") or ""
+ task.delay(4,update)
+end)
+local drop=Instance.new("TextButton")
+drop.Text,drop.Size,drop.Position="Оставить ком",UDim2.fromOffset(140,38),UDim2.new(1,-155,1,-170)
+drop.BackgroundColor3,drop.TextColor3=Color3.fromRGB(30,60,80),Color3.new(1,1,1)
+drop.Parent=gui
+local function dropBall() ReplicatedStorage:WaitForChild("StopRollingSnow"):FireServer() end
+drop.Activated:Connect(dropBall)
+player:GetAttributeChangedSignal("SnowSize"):Connect(function() drop.Visible=(player:GetAttribute("SnowSize") or 0)>0 end)
+drop.Visible=false
+UserInputService.InputBegan:Connect(function(input,processed)
+ if not processed and input.KeyCode==Enum.KeyCode.Q then dropBall() end
+end)
 player:GetAttributeChangedSignal("SantaGreeting"):Connect(function()
  label.Text="Санта: С праздником! Прокатись на санках и согрейся у камина!"
  task.delay(6,update)
 end)
 local boundTools=setmetatable({}, {__mode="k"})
-local function playSound(parent,id,volume)
- local sound=Instance.new("Sound")
- sound.SoundId,sound.Volume=id,volume
- sound.Parent=parent
- sound:Play()
- game:GetService("Debris"):AddItem(sound,3)
+local function playSound(parent,id,volume,speed)
+ local audio=Instance.new("Sound")
+ audio.SoundId,audio.Volume,audio.PlaybackSpeed=id,volume,speed or 1
+ audio.Parent=parent
+ audio:Play()
+ game:GetService("Debris"):AddItem(audio,4)
+end
+local function aimPoint(character)
+ local camera=workspace.CurrentCamera
+ if not camera then return nil end
+ local ray
+ if UserInputService.TouchEnabled then
+  ray=camera:ViewportPointToRay(camera.ViewportSize.X/2,camera.ViewportSize.Y/2)
+ else
+  ray=mouse.UnitRay
+ end
+ local params=RaycastParams.new()
+ params.FilterType=Enum.RaycastFilterType.Exclude
+ params.FilterDescendantsInstances={character}
+ local hit=workspace:Raycast(ray.Origin,ray.Direction*350,params)
+ return hit and hit.Position or ray.Origin+ray.Direction*350
 end
 local function characterAdded(character)
  local function bind(child)
@@ -38,48 +78,51 @@ local function characterAdded(character)
   if child.Name~="Снежки" and child.Name~="Горячий чай" then return end
   boundTools[child]=true
   local last=0
-  local generation=0
-  local shoulder,originalC0,activeTween
   local originalGrip=child.Grip
+  local shoulder,originalC0,tween,connection
   local function restore()
-   generation+=1
-   if activeTween then activeTween:Cancel() end
+   if connection then connection:Disconnect() connection=nil end
+   if tween then tween:Cancel() tween=nil end
    if shoulder and shoulder.Parent and originalC0 then shoulder.C0=originalC0 end
    child.Grip=originalGrip
   end
   child.Unequipped:Connect(restore)
   child.Activated:Connect(function()
    local tea=child.Name=="Горячий чай"
-   if os.clock()-last<(tea and 2.2 or 0.9) then return end
+   if child.Parent~=character or os.clock()-last<(tea and 2.4 or 0.9) then return end
    last=os.clock()
-   generation+=1
-   local current=generation
-   shoulder=character:FindFirstChild("RightShoulder",true) or character:FindFirstChild("Right Shoulder",true)
-   if shoulder and not originalC0 then originalC0=shoulder.C0 end
+   -- Gameplay is sent BEFORE optional arm/sound effects; an animation error cannot block throwing.
+   if not tea then
+    local target=aimPoint(character)
+    if target then ReplicatedStorage:WaitForChild("ThrowSnowball"):FireServer(target) end
+   end
+   restore()
    local handle=child:FindFirstChild("Handle")
+   local humanoid=character:FindFirstChildOfClass("Humanoid")
+   shoulder=character:FindFirstChild("RightShoulder",true) or character:FindFirstChild("Right Shoulder",true)
    if shoulder then
-    activeTween=TweenService:Create(shoulder,TweenInfo.new(0.2,Enum.EasingStyle.Sine),{C0=originalC0*CFrame.Angles(math.rad(tea and -65 or -100),0,math.rad(tea and -15 or 15))})
-    activeTween:Play()
+    originalC0=shoulder.C0
+    local r6=humanoid and humanoid.RigType==Enum.HumanoidRigType.R6
+    local angle=tea and 110 or 85
+    local pose=r6 and CFrame.Angles(0,0,math.rad(angle)) or CFrame.Angles(math.rad(angle),0,math.rad(-12))
+    tween=TweenService:Create(shoulder,TweenInfo.new(0.3,Enum.EasingStyle.Sine),{C0=originalC0*pose})
+    tween:Play()
    end
-   if tea then
-    child.Grip=originalGrip*CFrame.Angles(0,0,math.rad(-25))
-    if handle then playSound(handle,"rbxasset://sounds/action_swim.mp3",0.25) end
-    label.Text="☕ Горячий чай — согреваемся у камина"
-    task.delay(1.4,function() if current==generation then restore() update() end end)
-   else
-    if handle then playSound(handle,"rbxasset://sounds/action_jump.mp3",0.25) end
-    local camera=workspace.CurrentCamera
-    local target=mouse.Hit.Position
-    if UserInputService.TouchEnabled and camera then
-     target=camera.CFrame.Position+camera.CFrame.LookVector*120
-    end
-    task.delay(0.18,function()
-     if child.Parent==character and current==generation then
-      ReplicatedStorage:WaitForChild("ThrowSnowball"):FireServer(target)
-     end
+   local started=os.clock()
+   if tea and handle then
+    label.Text="☕ Пьём горячий чай…"
+    task.delay(0.35,function()
+     if child.Parent==character then playSound(handle,"rbxasset://sounds/action_swim.mp3",0.65,1.5) end
     end)
-    task.delay(0.45,function() if current==generation then restore() end end)
    end
+   connection=RunService.PreSimulation:Connect(function()
+    local elapsed=os.clock()-started
+    if child.Parent~=character or elapsed>(tea and 1.8 or 0.55) then restore() update() return end
+    if tea and elapsed>0.3 then
+     local tilt=math.sin(math.clamp((elapsed-0.3)/1.5,0,1)*math.pi)
+     child.Grip=originalGrip*CFrame.new(0,-0.2*tilt,-0.25*tilt)*CFrame.Angles(math.rad(-28*tilt),0,0)
+    end
+   end)
   end)
  end
  character.ChildAdded:Connect(bind)
@@ -87,6 +130,28 @@ local function characterAdded(character)
 end
 player.CharacterAdded:Connect(characterAdded)
 if player.Character then characterAdded(player.Character) end
+-- Pickups are personal: hide collected ingredients only for their collector.
+local collectibles={}
+for _,on in workspace:GetDescendants() do
+ if on:IsA("BasePart") and on:GetAttribute("IngredientKey") then table.insert(collectibles,on) end
+end
+local function refreshCollectibles()
+ for _,on in collectibles do
+  local owned=player:GetAttribute(on:GetAttribute("IngredientKey"))==true
+  on.LocalTransparencyModifier=owned and 1 or 0
+  for _,child in on:GetChildren() do
+   if child:IsA("ProximityPrompt") or child:IsA("BillboardGui") then child.Enabled=not owned end
+  end
+ end
+end
+for _,key in ingredientAttributes do player:GetAttributeChangedSignal(key):Connect(refreshCollectibles) end
+refreshCollectibles()
+local crosshair=Instance.new("TextLabel")
+crosshair.Size,crosshair.Position,crosshair.AnchorPoint=UDim2.fromOffset(24,24),UDim2.fromScale(0.5,0.5),Vector2.new(0.5,0.5)
+crosshair.BackgroundTransparency,crosshair.Text,crosshair.TextSize=1,"+",24
+crosshair.TextColor3,crosshair.TextStrokeTransparency=Color3.new(1,1,1),0.3
+crosshair.Parent=gui
+crosshair.Visible=UserInputService.TouchEnabled
 -- Snow follows the local character, keeping the effect inexpensive.
 local emitterPart=Instance.new("Part")
 emitterPart.Name,emitterPart.Size="LocalSnow",Vector3.new(90,1,90)
@@ -94,10 +159,13 @@ emitterPart.Anchored,emitterPart.CanCollide,emitterPart.CanQuery,emitterPart.Tra
 emitterPart.Parent=workspace
 local flakes=Instance.new("ParticleEmitter")
 flakes.Texture="rbxasset://textures/particles/sparkles_main.dds"
-flakes.Rate,flakes.Lifetime,flakes.Speed=100,NumberRange.new(7,10),NumberRange.new(5,8)
+flakes.Rate,flakes.Lifetime,flakes.Speed=240,NumberRange.new(7,10),NumberRange.new(5,8)
 flakes.EmissionDirection=Enum.NormalId.Bottom
 flakes.SpreadAngle=Vector2.new(15,15)
-flakes.Size=NumberSequence.new(0.13)
+flakes.Size=NumberSequence.new(0.2)
+flakes.LightInfluence=0
+flakes.Rotation=NumberRange.new(0,360)
+flakes.RotSpeed=NumberRange.new(-25,25)
 flakes.Acceleration=Vector3.new(1,-1,0)
 flakes.Parent=emitterPart
 task.spawn(function()
@@ -108,6 +176,8 @@ task.spawn(function()
    local pos=root.Position
    local indoors=(math.abs(pos.X+43)<15 and math.abs(pos.Z+22)<14 and pos.Y<24)
     or (math.abs(pos.X-58)<15 and math.abs(pos.Z+40)<14 and pos.Y<24)
+    or (math.abs(pos.X+130)<15 and math.abs(pos.Z+100)<14 and pos.Y<24)
+    or (math.abs(pos.X+40)<15 and math.abs(pos.Z-125)<14 and pos.Y<24)
    if indoors and flakes.Enabled then flakes:Clear() end
    flakes.Enabled=not indoors
   end
