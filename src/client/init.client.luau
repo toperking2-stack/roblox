@@ -59,7 +59,7 @@ speech.Parent=dialogue
 local answers={
  {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься!"},
  {"Как собрать снеговика?","🎅 Дед Мороз\nНайди веточки, морковку и ведёрко. Накатай ком до 4 метров и принеси его на поляну снеговиков. Можно построить несколько — у каждого своя подсказка удаления."},
- {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. А потом согрейся чаем у камина."},
+ {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. Ты можешь вернуться в дом и согреться чаем. Олени остаются в лесу — приманивать их к камину нельзя."},
  {"До встречи!",false},
 }
 for i,answer in answers do
@@ -119,7 +119,13 @@ end)
 -- Humanoid.MoveDirection on the server (that property does not replicate).
 local skateVelocity=Vector3.zero
 local skateHumanoid,skateForce,oldWalk,oldRotate
+local skateEffects={}
+local leanJoint,leanBase
 local function finishSkating()
+ for _,effect in skateEffects do if effect.Parent then effect.Enabled=false end end
+ table.clear(skateEffects)
+ if leanJoint and leanJoint.Parent then leanJoint.C0=leanBase end
+ leanJoint,leanBase=nil,nil
  if skateForce then skateForce:Destroy() skateForce=nil end
  if skateHumanoid and skateHumanoid.Parent then skateHumanoid.WalkSpeed=oldWalk skateHumanoid.AutoRotate=oldRotate end
  skateHumanoid=nil skateVelocity=Vector3.zero
@@ -138,12 +144,22 @@ RunService.PreSimulation:Connect(function(dt)
   skateForce=Instance.new("BodyVelocity")
   skateForce.Name,skateForce.MaxForce,skateForce.P="SkatingMomentum",Vector3.new(50000,0,50000),4000
   skateForce.Parent=root
+  local gear=character:FindFirstChild("SkateGear")
+  if gear then
+   for _,effect in gear:GetDescendants() do
+    if effect:IsA("Trail") or effect:IsA("ParticleEmitter") then table.insert(skateEffects,effect) end
+   end
+  end
+  leanJoint=character:FindFirstChild("Waist",true) or character:FindFirstChild("RootJoint",true)
+  if leanJoint then leanBase=leanJoint.C0 end
  end
  local input=humanoid.MoveDirection
  local desired=Vector3.new(input.X,0,input.Z)*27
- local response=input.Magnitude>0.05 and 3.4 or 0.35
+ local response=input.Magnitude>0.05 and 3.4 or 0.23
  skateVelocity=skateVelocity:Lerp(desired,1-math.exp(-dt*response))
  skateForce.Velocity=skateVelocity
+ for _,effect in skateEffects do effect.Enabled=skateVelocity.Magnitude>3 end
+ if leanJoint then leanJoint.C0=leanBase*CFrame.Angles(-0.09*math.min(skateVelocity.Magnitude/27,1),0,0) end
  if skateVelocity.Magnitude>1 then root.CFrame=CFrame.lookAt(pos,pos+skateVelocity) end
 end)
 local boundTools=setmetatable({}, {__mode="k"})

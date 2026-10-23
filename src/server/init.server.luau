@@ -383,10 +383,10 @@ prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaG
 local reindeer={}
 for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.new(155,3.2,-140),Vector3.new(-160,3.2,-30)} do
  local model=Instance.new("Model") model.Name,model.Parent="Олень "..index,world
- local body=round("Тело оленя",Vector3.new(2.8,2.7,5.6),center,Color3.fromRGB(139,91,56),model)
+ local body=round("Тело оленя",Vector3.new(3.5,3.1,6),center,Color3.fromRGB(139,91,56),model)
  model.PrimaryPart=body
- round("Грудка",Vector3.new(1.9,2.5,1.6),center+Vector3.new(0,0,-2),Color3.fromRGB(194,158,111),model)
- rod("Шея",center+Vector3.new(0,0.5,-1.8),center+Vector3.new(0,2,-3.1),0.8,Color3.fromRGB(139,91,56),model)
+ round("Грудка",Vector3.new(2.5,2.9,2.2),center+Vector3.new(0,0,-2),Color3.fromRGB(194,158,111),model)
+ rod("Шея",center+Vector3.new(0,0.5,-1.8),center+Vector3.new(0,2,-3.1),0.95,Color3.fromRGB(139,91,56),model)
  round("Голова оленя",Vector3.new(1.5,1.8,2.3),center+Vector3.new(0,2,-3.4),Color3.fromRGB(155,105,63),model)
  round("Нос оленя",Vector3.new(0.65,0.5,0.5),center+Vector3.new(0,1.9,-4.6),index==1 and red or Color3.fromRGB(47,35,31),model)
  local legs={}
@@ -402,7 +402,7 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
   end
   for _,z in ipairs({-1.8,1.8}) do
    local offset=Vector3.new(side*0.95,-1.8,z)
-   local leg=rod("Нога оленя",center+offset+Vector3.new(0,0.9,0),center+offset-Vector3.new(0,0.9,0),0.22,Color3.fromRGB(115,75,46),model)
+   local leg=rod("Нога оленя",center+offset+Vector3.new(0,0.9,0),center+offset-Vector3.new(0,0.9,0),0.29,Color3.fromRGB(115,75,46),model)
    local hoof=round("Копытце",Vector3.new(0.55,0.5,0.7),center+offset-Vector3.new(0,0.8,0),Color3.fromRGB(53,44,39),model)
    table.insert(legs,{part=leg,hoof=hoof,offset=offset,phase=side*(z>0 and 1 or -1)})
   end
@@ -454,6 +454,10 @@ end
 local rack=part("Прокат коньков",Vector3.new(5,3,2),Vector3.new(-94,1.5,103),green,Enum.Material.Wood)
 sign(rack,"КОНЬКИ • E надеть / снять")
 local slipStates={}
+local skateColors={Color3.fromRGB(206,61,80),Color3.fromRGB(62,145,212),Color3.fromRGB(112,184,137),Color3.fromRGB(162,106,209),Color3.fromRGB(235,164,64),Color3.fromRGB(227,119,178)}
+local skateRandom=Random.new()
+local lastSkateColor={}
+
 local function removeSkates(player)
  player:SetAttribute("SkatesEquipped",false)
  local gear=player.Character and player.Character:FindFirstChild("SkateGear")
@@ -464,7 +468,13 @@ prompt(rack,"Надеть / снять коньки",function(player)
  local character=player.Character
  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
  if not humanoid or humanoid.Health<=0 then return end
+ local previous=lastSkateColor[player] or 0
+ local colorIndex
+ repeat colorIndex=math.floor(skateRandom:NextNumber(1,#skateColors+0.999)) until colorIndex~=previous
+ lastSkateColor[player]=colorIndex
+ local bootColor=skateColors[colorIndex]
  local gear=Instance.new("Model") gear.Name,gear.Parent="SkateGear",character
+ gear:SetAttribute("ColorIndex",colorIndex)
  for _,side in ipairs({"Left","Right"}) do
   local foot=character:FindFirstChild(side.."Foot") or character:FindFirstChild(side.." Leg")
   if foot then
@@ -473,7 +483,21 @@ prompt(rack,"Надеть / снять коньки",function(player)
    blade.CFrame=foot.CFrame*CFrame.new(0,offset,0)
    blade.Anchored,blade.CanCollide,blade.Massless=false,false,true
    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=foot,blade,blade
-   local boot=part("Ботинок конька",Vector3.new(0.85,0.35,1.3),Vector3.zero,snow,nil,gear)
+   local left,right=Instance.new("Attachment"),Instance.new("Attachment")
+   left.Position,right.Position=Vector3.new(-0.09,-0.13,0.6),Vector3.new(0.09,-0.13,0.6)
+   left.Parent,right.Parent=blade,blade
+   local trace=Instance.new("Trail")
+   trace.Name,trace.Attachment0,trace.Attachment1="IceTrace",left,right
+   trace.Lifetime,trace.LightEmission,trace.Enabled=1.2,0.35,false
+   trace.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0.25),NumberSequenceKeypoint.new(1,1)})
+   trace.Parent=blade
+   local spray=Instance.new("ParticleEmitter")
+   spray.Name,spray.Texture="IceSpray","rbxasset://textures/particles/sparkles_main.dds"
+   spray.Enabled,spray.Rate,spray.Lifetime=false,22,NumberRange.new(0.15,0.4)
+   spray.Speed,spray.Size=NumberRange.new(2,5),NumberSequence.new(0.08)
+   spray.Acceleration,spray.SpreadAngle=Vector3.new(0,-10,0),Vector2.new(40,40)
+   spray.Parent=left
+   local boot=part("Ботинок конька",Vector3.new(0.85,0.35,1.3),Vector3.zero,bootColor,nil,gear)
    boot.CFrame=foot.CFrame*CFrame.new(0,offset+0.25,0)
    boot.Anchored,boot.CanCollide,boot.Massless=false,false,true
    local binding=Instance.new("WeldConstraint") binding.Part0,binding.Part1,binding.Parent=foot,boot,boot
@@ -859,4 +883,5 @@ Players.PlayerRemoving:Connect(function(player)
   builtByPlayer[player]=nil
  end
  slipStates[player]=nil
+ lastSkateColor[player]=nil
 end)

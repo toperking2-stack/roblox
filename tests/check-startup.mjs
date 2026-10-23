@@ -139,6 +139,7 @@ for _,side in {'Left','Right'} do
 end
 interact(rack)
 assert(player:GetAttribute('SkatesEquipped')==true,'rack equips skates')
+local firstSkateColor=character:FindFirstChild('SkateGear'):GetAttribute('ColorIndex')
 assert(#character:FindFirstChild('SkateGear'):GetChildren()==4,'two boots and two blades')
 root.Position=Vector3.new(-105,5,75)
 advance(0.5)
@@ -191,12 +192,21 @@ services.RunService.PreSimulation:Fire(0.1)
 local force=assert(root:FindFirstChild('SkatingMomentum'),'skating force enabled')
 local speed=force.Velocity.Magnitude
 assert(speed>0,'movement input accelerates skates')
+assert(character:FindFirstChild('SkateGear'):GetAttribute('ColorIndex')~=firstSkateColor,'new equip chooses a different random color')
+local iceEffects={}
+for _,effect in character:FindFirstChild('SkateGear'):GetDescendants() do
+ if effect.ClassName=='Trail' or effect.ClassName=='ParticleEmitter' then
+  table.insert(iceEffects,effect) assert(effect.Enabled,'moving skates show ice effects')
+ end
+end
+assert(#iceEffects==4,'each skate has a trace and ice spray')
 humanoid.MoveDirection=Vector3.zero
 services.RunService.PreSimulation:Fire(0.1)
 assert(force.Velocity.Magnitude>0 and force.Velocity.Magnitude<speed,'skates coast when input is released')
 root.Position=Vector3.new(0,5,0)
 services.RunService.PreSimulation:Fire(0.1)
 assert(not root:FindFirstChild('SkatingMomentum') and humanoid.WalkSpeed==16,'leaving rink restores walking')
+for _,effect in iceEffects do assert(not effect.Enabled,'ice effects stop outside rink') end
 -- Dialogue buttons and music mute are connected, not decorative UI.
 interact(santa)
 local dialog=named('Frame')
