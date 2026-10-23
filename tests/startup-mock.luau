@@ -97,9 +97,10 @@ function methods:PivotTo(frame)
 end
 function methods:SetAttribute(key,value)
  assert(string.match(key,'^[A-Za-z][A-Za-z0-9_]*$'),'attribute names must be portable ASCII identifiers')
+ local previous=properties[self].attributes[key]
  properties[self].attributes[key]=value
  local event=events[self]['Attribute:'..key]
- if event then event:Fire() end
+ if event and previous~=value then event:Fire() end
 end
 function methods:GetAttributeChangedSignal(key)
  local id='Attribute:'..key

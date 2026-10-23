@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v2 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
 end
 label.Size=UDim2.new(0,330,0,78)
@@ -59,7 +59,7 @@ speech.Parent=dialogue
 local answers={
  {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься! Для выхода есть проход у проката; X снимает коньки в любом месте."},
  {"Как собрать снеговика?","🎅 Дед Мороз\nНайди веточки, морковку и ведёрко. Накатай ком до 4 метров и принеси его на поляну снеговиков. Можно построить несколько — у каждого своя подсказка удаления."},
- {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. Ты можешь вернуться в дом и согреться чаем. Их можно погладить, поманить морковкой, оседлать и прицепить санки. Гуляйте по открытым дорожкам."},
+ {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Они гуляют на четырёх лесных полянках. У одного красный нос — попробуй его найти. Ты можешь вернуться в дом и согреться чаем. Подойди и нажми E, чтобы погладить, или F, чтобы прицепить санки. В санки можно сесть пассажиром — олень повезёт тебя по лесной полянке."},
  {"До встречи!",false},
 }
 for i,answer in answers do
@@ -115,20 +115,33 @@ task.spawn(function()
   task.wait(3)
  end
 end)
--- Client owns character physics, so skating input is applied here rather than reading
--- Humanoid.MoveDirection on the server (that property does not replicate).
+-- Skating has no persistent force objects: every exit restores normal character control.
 local skateVelocity=Vector3.zero
-local skateHumanoid,skateForce,oldWalk,oldRotate
+local skateHumanoid,skateRoot
 local skateEffects={}
-local leanJoint,leanBase
+local hasSkated,pendingRemoval=false,false
+local function clearOldForces(root)
+ if not root then return end
+ for _,child in root:GetChildren() do
+  if child.Name=="SkatingMomentum" then child:Destroy() end
+ end
+end
 local function finishSkating()
+ local wasActive=skateHumanoid~=nil
  for _,effect in skateEffects do if effect.Parent then effect.Enabled=false end end
  table.clear(skateEffects)
- if leanJoint and leanJoint.Parent then leanJoint.C0=leanBase end
- leanJoint,leanBase=nil,nil
- if skateForce then skateForce:Destroy() skateForce=nil end
- if skateHumanoid and skateHumanoid.Parent then skateHumanoid.WalkSpeed=math.max(oldWalk or 16,16) skateHumanoid.AutoRotate=oldRotate end
- skateHumanoid=nil skateVelocity=Vector3.zero
+ if skateHumanoid and skateHumanoid.Parent then
+  skateHumanoid.WalkSpeed,skateHumanoid.AutoRotate,skateHumanoid.PlatformStand=16,true,false
+ end
+ if skateRoot and skateRoot.Parent then
+  clearOldForces(skateRoot)
+  if wasActive then
+   skateRoot.AssemblyLinearVelocity=Vector3.new(0,skateRoot.AssemblyLinearVelocity.Y,0)
+   skateRoot.AssemblyAngularVelocity=Vector3.zero
+  end
+ end
+ skateHumanoid,skateRoot=nil,nil
+ skateVelocity=Vector3.zero
 end
 local removeButton=Instance.new("TextButton")
 removeButton.Size,removeButton.Position=UDim2.fromOffset(170,36),UDim2.new(1,-185,1,-215)
@@ -137,93 +150,57 @@ removeButton.BackgroundColor3,removeButton.TextColor3=Color3.fromRGB(40,70,86),C
 removeButton.Visible,removeButton.Parent=false,gui
 local function requestRemoveSkates()
  finishSkating()
+ if pendingRemoval then return end
+ pendingRemoval=true
  ReplicatedStorage:WaitForChild("RemoveSkates"):FireServer()
 end
 removeButton.Activated:Connect(requestRemoveSkates)
-player:GetAttributeChangedSignal("SkatesEquipped"):Connect(function()
+local function resetSkateSession()
+ finishSkating()
+ hasSkated,pendingRemoval=false,false
  removeButton.Visible=player:GetAttribute("SkatesEquipped")==true
- if not removeButton.Visible then finishSkating() end
-end)
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ clearOldForces(root)
+ if humanoid then humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=16,true,false end
+end
+player:GetAttributeChangedSignal("SkatesEquipped"):Connect(resetSkateSession)
+player:GetAttributeChangedSignal("SkateSession"):Connect(resetSkateSession)
+player.CharacterAdded:Connect(resetSkateSession)
 UserInputService.InputBegan:Connect(function(input,processed)
  if not processed and input.KeyCode==Enum.KeyCode.X then requestRemoveSkates() end
 end)
--- Mobile riding controls plus camera-relative keyboard movement, independent of seated MoveDirection.
-local rideButtons={}
-local touchDirection=Vector3.zero
-for i,entry in {{"▲",Vector3.new(0,0,-1)},{"◀",Vector3.new(-1,0,0)},{"▼",Vector3.new(0,0,1)},{"▶",Vector3.new(1,0,0)}} do
- local button=Instance.new("TextButton")
- button.Size,button.Position=UDim2.fromOffset(45,45),UDim2.new(1,-215+(i-1)*49,1,-155)
- button.Text,button.TextSize,button.Visible=entry[1],24,false
- button.BackgroundColor3,button.TextColor3=Color3.fromRGB(45,77,81),Color3.fromRGB(255,245,220)
- button.Parent=gui
- button.MouseButton1Down:Connect(function() touchDirection=entry[2] end)
- button.MouseButton1Up:Connect(function() touchDirection=Vector3.zero end)
- table.insert(rideButtons,button)
-end
-UserInputService.InputEnded:Connect(function(input)
- if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then touchDirection=Vector3.zero end
-end)
-player:GetAttributeChangedSignal("RidingReindeer"):Connect(function()
- local riding=player:GetAttribute("RidingReindeer")==true
- for _,button in rideButtons do button.Visible=riding end
- touchDirection=Vector3.zero
-end)
-local rideTimer=0
-RunService.PreSimulation:Connect(function(dt)
- if not player:GetAttribute("RidingReindeer") then rideTimer=0 return end
- rideTimer+=dt
- if rideTimer<0.1 then return end rideTimer=0
- local direction=touchDirection
- if not UserInputService:GetFocusedTextBox() then
-  local x,z=0,0
-  if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then z-=1 end
-  if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then z+=1 end
-  if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then x-=1 end
-  if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then x+=1 end
-  direction+=Vector3.new(x,0,z)
- end
- local camera=workspace.CurrentCamera
- if camera and direction.Magnitude>0 then
-  local forward=Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z)
-  if forward.Magnitude<0.01 then forward=Vector3.new(0,0,-1) end
-  forward=forward.Unit
-  local right=Vector3.new(-forward.Z,0,forward.X)
-  direction=right*direction.X-forward*direction.Z
-  if direction.Magnitude>1 then direction=direction.Unit end
- end
- ReplicatedStorage:WaitForChild("ReindeerInput"):FireServer(direction)
-end)
-RunService.PreSimulation:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
  local character=player.Character
  local root=character and character:FindFirstChild("HumanoidRootPart")
  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
  local pos=root and root.Position
- local onIce=pos and math.abs(pos.X+105)<28 and math.abs(pos.Z-75)<21 and pos.Y>1 and pos.Y<9
- if not humanoid or humanoid.Health<=0 or not onIce or not player:GetAttribute("SkatesEquipped") then finishSkating() return end
- if skateHumanoid~=humanoid then
+ local inBounds=pos and math.abs(pos.X+105)<28.5 and math.abs(pos.Z-75)<21.5
+ local equipped=player:GetAttribute("SkatesEquipped")==true
+ if hasSkated and equipped and not inBounds then requestRemoveSkates() return end
+ local onIce=inBounds and pos.Y>1 and pos.Y<9
+ if pendingRemoval or not equipped or not onIce or not humanoid or humanoid.Health<=0 then finishSkating() return end
+ if skateHumanoid~=humanoid or skateRoot~=root then
   finishSkating()
-  skateHumanoid,oldWalk,oldRotate=humanoid,humanoid.WalkSpeed,humanoid.AutoRotate
-  humanoid.WalkSpeed,humanoid.AutoRotate=16,false
-  skateForce=Instance.new("BodyVelocity")
-  skateForce.Name,skateForce.MaxForce,skateForce.P="SkatingMomentum",Vector3.new(50000,0,50000),4000
-  skateForce.Parent=root
+  skateHumanoid,skateRoot=humanoid,root
+  clearOldForces(root)
+  humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=24,true,false
   local gear=character:FindFirstChild("SkateGear")
   if gear then
    for _,effect in gear:GetDescendants() do
     if effect:IsA("Trail") or effect:IsA("ParticleEmitter") then table.insert(skateEffects,effect) end
    end
   end
-  leanJoint=character:FindFirstChild("Waist",true) or character:FindFirstChild("RootJoint",true)
-  if leanJoint then leanBase=leanJoint.C0 end
  end
+ hasSkated=true
  local input=humanoid.MoveDirection
  local desired=Vector3.new(input.X,0,input.Z)*27
- local response=input.Magnitude>0.05 and 3.4 or 0.23
- skateVelocity=skateVelocity:Lerp(desired,1-math.exp(-dt*response))
- skateForce.Velocity=skateVelocity
+ local response=input.Magnitude>0.05 and 4 or 0.6
+ skateVelocity=skateVelocity:Lerp(desired,1-math.exp(-math.min(dt,0.1)*response))
+ -- Apply velocity after physics; no BodyVelocity remains to pin the next session in place.
+ root.AssemblyLinearVelocity=Vector3.new(skateVelocity.X,root.AssemblyLinearVelocity.Y,skateVelocity.Z)
  for _,effect in skateEffects do effect.Enabled=skateVelocity.Magnitude>3 end
- if leanJoint then leanJoint.C0=leanBase*CFrame.Angles(-0.09*math.min(skateVelocity.Magnitude/27,1),0,0) end
- if skateVelocity.Magnitude>1 then root.CFrame=CFrame.lookAt(pos,pos+skateVelocity) end
 end)
 local boundTools=setmetatable({}, {__mode="k"})
 local function playSound(parent,id,volume,speed)

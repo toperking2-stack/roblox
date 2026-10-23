@@ -157,32 +157,23 @@ advance(0.15)
 assert(player:GetAttribute('SkatesEquipped')==false,'leaving rink automatically removes skates')
 assert(humanoid.WalkSpeed==16 and humanoid.AutoRotate and not humanoid.PlatformStand,'walking recovers after forced rink exit')
 assert(named('Бортик катка').Size.Y>=4,'rink has a high fence')
--- Reindeer interactions use server callbacks and enforce the carrot prerequisite.
+-- Exactly two animal actions remain; faster wandering picks noncircular destinations.
 local deer=reindeer[1]
-player:SetAttribute('InventoryCarrot',false)
-interact(deer.model.PrimaryPart,'Поманить морковкой / остановить')
-assert(not deer.follow,'cannot lure without carrot')
-interact(named('Морковка'))
-interact(deer.model.PrimaryPart,'Поманить морковкой / остановить')
-assert(deer.follow==player,'carrot starts following')
-local beforeFollow=deer.model:GetPivot().Position
-root.Position+=Vector3.new(15,0,0)
-advance(0.3)
-assert((deer.model:GetPivot().Position-beforeFollow).Magnitude>0.1,'lured reindeer follows player')
+local actions=0
+for _,p in deer.model.PrimaryPart:GetChildren() do if p.ClassName=='ProximityPrompt' then actions+=1 end end
+assert(actions==2,'deer only exposes pet and hitch actions')
 interact(deer.model.PrimaryPart,'Погладить оленя')
 assert(deer.petUntil>os.clock(),'pet pauses deer and creates feedback')
+local parked=tourSleds[1]
+parked:PivotTo(CFrame.new(deer.model.PrimaryPart.Position+Vector3.new(6,-1.5,5)))
 interact(deer.model.PrimaryPart,'Прицепить / отцепить ближайшие санки')
 assert(deer.tow and deer.tow:GetAttribute('TowedBy')==deer.model.Name,'nearby sled is hitched')
 interact(deer.model.PrimaryPart,'Прицепить / отцепить ближайшие санки')
 assert(not deer.tow,'sled can be unhitched')
-interact(deer.model.PrimaryPart,'Сесть верхом • прыжок — слезть')
-assert(player:GetAttribute('RidingReindeer') and deer.seat.Occupant==humanoid,'player mounts reindeer: riding='..tostring(player:GetAttribute('RidingReindeer'))..' sit='..tostring(humanoid.Sit)..' occupied='..tostring(deer.seat.Occupant==humanoid)..' health='..tostring(humanoid.Health)..' follow='..tostring(deer.follow==player))
-local beforeRide=deer.model:GetPivot().Position
-named('ReindeerInput').OnServerEvent:Fire(player,Vector3.new(1,0,0))
-advance(0.3)
-assert(deer.model:GetPivot().Position.X>beforeRide.X+1,'validated input drives mounted reindeer')
-deer.seat.Occupant=nil humanoid.Sit=false
-assert(not player:GetAttribute('RidingReindeer') and not mountedDeer[player],'jump clears mounted state')
+advance(3.2)
+local beforeWander=deer.model:GetPivot().Position
+advance(0.5)
+assert((deer.model:GetPivot().Position-beforeWander).Magnitude>1,'deer moves faster between destinations')
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -222,29 +213,44 @@ assert(soundsAfter>soundsBefore,'tea sip schedules audible effect')
 services.RunService.PreSimulation:Fire(0.1)
 assert(tea.Grip~=teaGripBefore,'tea grip animation changes the actual held-tool pose')
 tea.Unequipped:Fire()
--- Local movement input accelerates on ice; releasing input coasts, exiting restores walking.
-local previousColor=lastSkateColor[player]
-interact(rack)
-root.Position=Vector3.new(-105,5,75)
-services.RunService.PreSimulation:Fire(0.1)
-local force=assert(root:FindFirstChild('SkatingMomentum'),'skating force enabled')
-local speed=force.Velocity.Magnitude
-assert(speed>0,'movement input accelerates skates')
-assert(character:FindFirstChild('SkateGear'):GetAttribute('ColorIndex')~=previousColor,'new equip chooses a different random color')
-local iceEffects={}
-for _,effect in character:FindFirstChild('SkateGear'):GetDescendants() do
- if effect.ClassName=='Trail' or effect.ClassName=='ParticleEmitter' then
-  table.insert(iceEffects,effect) assert(effect.Enabled,'moving skates show ice effects')
+-- Four complete sessions reproduce entering, exiting and putting skates back on.
+for cycle=1,4 do
+ local previousColor=lastSkateColor[player]
+ if cycle==2 then
+  -- Simulate the legacy freeze, including an orphan force left on the character.
+  local stale=Instance.new('BodyVelocity') stale.Name,stale.Parent='SkatingMomentum',root
+  humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=0,false,true
  end
+ interact(rack)
+ assert(player:GetAttribute('SkatesEquipped'),'equip cycle '..cycle)
+ assert(not root:FindFirstChild('SkatingMomentum'),'legacy force removed before re-equip')
+ assert(humanoid.WalkSpeed>=16 and not humanoid.PlatformStand,'re-equip recovers fallen or frozen character')
+ root.Position=Vector3.new(-105,5,75)
+ humanoid.MoveDirection=Vector3.new(1,0,0)
+ services.RunService.Heartbeat:Fire(0.1)
+ local speed=Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude
+ assert(speed>0,'movement input accelerates skates in cycle '..cycle)
+ assert(not root:FindFirstChild('SkatingMomentum'),'skating creates no persistent force')
+ local gear=assert(character:FindFirstChild('SkateGear'))
+ assert(gear:GetAttribute('ColorIndex')~=previousColor,'random color differs from previous session')
+ local iceEffects={}
+ for _,effect in gear:GetDescendants() do
+  if effect.ClassName=='Trail' or effect.ClassName=='ParticleEmitter' then
+   table.insert(iceEffects,effect) assert(effect.Enabled,'moving skates show ice effects')
+  end
+ end
+ assert(#iceEffects==4,'each skate has a trace and ice spray')
+ humanoid.MoveDirection=Vector3.zero
+ services.RunService.Heartbeat:Fire(0.1)
+ local coast=root.AssemblyLinearVelocity.Magnitude
+ assert(coast>0 and coast<speed,'release of input keeps a decaying glide')
+ root.Position=Vector3.new(-70,5,75)
+ services.RunService.Heartbeat:Fire(0.1)
+ assert(not player:GetAttribute('SkatesEquipped') and not character:FindFirstChild('SkateGear'),'exit removes skates in cycle '..cycle)
+ assert(humanoid.WalkSpeed==16 and humanoid.AutoRotate and not humanoid.PlatformStand,'exit restores walking in cycle '..cycle)
+ assert(Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude==0,'exit clears residual horizontal glide')
+ for _,effect in iceEffects do assert(not effect.Enabled,'ice effects stop outside rink') end
 end
-assert(#iceEffects==4,'each skate has a trace and ice spray')
-humanoid.MoveDirection=Vector3.zero
-services.RunService.PreSimulation:Fire(0.1)
-assert(force.Velocity.Magnitude>0 and force.Velocity.Magnitude<speed,'skates coast when input is released')
-root.Position=Vector3.new(0,5,0)
-services.RunService.PreSimulation:Fire(0.1)
-assert(not root:FindFirstChild('SkatingMomentum') and humanoid.WalkSpeed==16,'leaving rink restores walking')
-for _,effect in iceEffects do assert(not effect.Enabled,'ice effects stop outside rink') end
 -- Dialogue buttons and music mute are connected, not decorative UI.
 interact(santa)
 local dialog=named('Frame')
@@ -256,12 +262,6 @@ for _,o in objects do
  end
 end
 assert(muted and named('HolidayMusic').Volume==0,'background melody can be muted')
-interact(reindeer[1].model.PrimaryPart,'Сесть верхом • прыжок — слезть')
-mockKeys[Enum.KeyCode.W]=true
-services.RunService.PreSimulation:Fire(0.2)
-assert(reindeer[1].input.Magnitude>0,'mounted keyboard controls send input from client to server')
-mockKeys[Enum.KeyCode.W]=false
-reindeer[1].seat.Occupant=nil humanoid.Sit=false
 -- The emergency remove button is usable even when the player is away from the rack.
 interact(rack)
 root.Position=Vector3.new(0,5,0)
@@ -273,5 +273,5 @@ return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\ndo\n'+client+'\nend\n'+clientChecks;
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, rink escape recovery and reindeer interactions.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery and two reindeer actions.');
 } finally { state.destroy(); }

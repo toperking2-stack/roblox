@@ -114,7 +114,7 @@ local function prompt(on, text, callback, keyName)
  p.ActionText, p.ObjectText, p.MaxActivationDistance = text, on.Name, 10
  p.RequiresLineOfSight = false
  p.KeyboardKeyCode=Enum.KeyCode[keyName or "E"]
- if keyName then p.UIOffset=Vector2.new(0,({F=-60,R=0,T=60})[keyName] or -120) end
+ if keyName then p.UIOffset=Vector2.new(0,({F=30,E=-30})[keyName] or 0) end
  p.Parent = on
  p.Triggered:Connect(function(player)
   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -384,16 +384,8 @@ sign(santa,"ДЕД МОРОЗ • E — поговорить",Vector3.new(0,8.5,
 prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaGreeting",(player:GetAttribute("SantaGreeting") or 0)+1) end)
 -- Animated reindeer follow small woodland routes, clear of houses and sled runouts.
 local reindeer={}
-local mountedDeer={}
 local tourSleds={}
-local rideInput=Instance.new("RemoteEvent")
-rideInput.Name,rideInput.Parent="ReindeerInput",ReplicatedStorage
-rideInput.OnServerEvent:Connect(function(player,direction)
- local deer=mountedDeer[player]
- if not deer or typeof(direction)~="Vector3" or direction.X~=direction.X or direction.Z~=direction.Z or direction.Magnitude>1.1 then return end
- deer.input=Vector3.new(direction.X,0,direction.Z)
- deer.inputUntil=os.clock()+0.5
-end)
+local deerRandom=Random.new(937)
 local function detachSled(deer)
  if not deer.tow then return end
  local sled=deer.tow
@@ -427,10 +419,7 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
    table.insert(legs,{part=leg,hoof=hoof,offset=offset,phase=side*(z>0 and 1 or -1)})
   end
  end
- local saddle=Instance.new("Seat")
- saddle.Name,saddle.Size,saddle.Anchored,saddle.CanTouch,saddle.CanCollide="Седло оленя",Vector3.new(2.2,0.35,2.5),true,false,false
- saddle.CFrame,saddle.Color,saddle.Parent=CFrame.new(center+Vector3.new(0,1.5,0)),red,model
- local deer={model=model,center=center,phase=index*1.6,legs=legs,seat=saddle,input=Vector3.zero,inputUntil=0}
+ local deer={model=model,center=center,legs=legs,target=center+Vector3.new(index%2==0 and 12 or -12,0,8),pauseUntil=0}
  table.insert(reindeer,deer)
  -- Each meadow has a small usable touring sled ready to hitch.
  local sled=Instance.new("Model") sled.Name,sled.Parent="Прогулочные санки",world
@@ -457,51 +446,23 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
   sledSeat:Sit(humanoid)
  end)
  prompt(body,"Погладить оленя",function(player)
-  deer.petUntil=os.clock()+2
-  player:SetAttribute("WinterMessage","Олень доволен! ♥ F — поманить, R — сесть, T — санки")
+  deer.petUntil=os.clock()+3
+  player:SetAttribute("WinterMessage","Олень доволен! ♥ E — погладить • F — прицепить санки")
   local gui=Instance.new("BillboardGui") gui.Size,gui.StudsOffset,gui.Parent=UDim2.fromOffset(70,50),Vector3.new(0,5,0),body
   local heart=Instance.new("TextLabel") heart.Size,heart.BackgroundTransparency,heart.Text,heart.TextSize=UDim2.fromScale(1,1),1,"♥",36
   heart.TextColor3,heart.Parent=red,gui
   Debris:AddItem(gui,2)
  end,"E")
- prompt(body,"Поманить морковкой / остановить",function(player)
-  if deer.rider and deer.rider~=player then return end
-  if deer.follow==player then deer.follow=nil player:SetAttribute("WinterMessage","Олень больше не следует за тобой") return end
-  if deer.follow and deer.follow~=player then return end
-  if not player:GetAttribute("InventoryCarrot") then player:SetAttribute("WinterMessage","Сначала подбери морковку на поляне снеговиков") return end
-  deer.follow=player
-  player:SetAttribute("WinterMessage","Олень идёт за морковкой! Обходи дома и деревья, F — остановить")
- end,"F")
- prompt(body,"Сесть верхом • прыжок — слезть",function(player)
-  local character=player.Character
-  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
-  if not humanoid or humanoid.Health<=0 or humanoid.Sit or saddle.Occupant or mountedDeer[player] then return end
-  if deer.follow and deer.follow~=player then return end
-  if removeSkates then removeSkates(player) end
-  deer.follow=nil deer.rider=player mountedDeer[player]=deer
-  player:SetAttribute("RidingReindeer",true)
-  character:PivotTo(saddle.CFrame*CFrame.new(0,2,0))
-  saddle:Sit(humanoid)
-  player:SetAttribute("WinterMessage","Верхом: WASD / стрелки на экране • прыжок — слезть • T — санки")
- end,"R")
- saddle:GetPropertyChangedSignal("Occupant"):Connect(function()
-  if not saddle.Occupant and deer.rider then
-   deer.rider:SetAttribute("RidingReindeer",false)
-   mountedDeer[deer.rider]=nil
-   deer.rider=nil deer.input=Vector3.zero
-  end
- end)
  prompt(body,"Прицепить / отцепить ближайшие санки",function(player)
-  if (deer.rider and deer.rider~=player) or (deer.follow and deer.follow~=player) then return end
   if deer.tow then detachSled(deer) player:SetAttribute("WinterMessage","Санки отцеплены") return end
-  local closest,distance=nil,20
+  local closest,distance=nil,30
   for _,candidate in world:GetChildren() do
    if candidate:IsA("Model") and candidate:GetAttribute("Towable") and not candidate:GetAttribute("TowedBy") and candidate.PrimaryPart then
     local d=(candidate.PrimaryPart.Position-body.Position).Magnitude
     if d<distance then closest,distance=candidate,d end
    end
   end
-  if not closest then player:SetAttribute("WinterMessage","Подведи оленя к свободным санкам: расстояние до 20 шагов") return end
+  if not closest then player:SetAttribute("WinterMessage","Подожди оленя у свободных санок: расстояние до 30 шагов") return end
   local a,b=Instance.new("Attachment"),Instance.new("Attachment")
   a.Position,b.Position=Vector3.new(0,-1.5,3),Vector3.new(0,0,-1.8)
   a.Parent,b.Parent=body,closest.PrimaryPart
@@ -512,8 +473,8 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
   closest:SetAttribute("TowedBy",model.Name)
   closest.PrimaryPart:SetNetworkOwner(nil)
   deer.tow,deer.towParts=closest,{rope,a,b}
-  player:SetAttribute("WinterMessage","Санки прицеплены! Садись верхом или веди оленя морковкой")
- end,"T")
+  player:SetAttribute("WinterMessage","Санки прицеплены! Садись в них — олень повезёт по полянке")
+ end,"F")
 end
 local deerTime,deerTick=0,0
 RunService.Heartbeat:Connect(function(dt)
@@ -521,38 +482,24 @@ RunService.Heartbeat:Connect(function(dt)
  if deerTick<0.1 then return end deerTick=0
  for _,deer in reindeer do
   local current=deer.model:GetPivot().Position
-  local a=deerTime*0.16+deer.phase
-  local target=deer.center+Vector3.new(math.cos(a)*9,0,math.sin(a)*9)
-  local speed=2.2
-  if deer.rider then
-   local rider=deer.rider
-   local humanoid=rider.Character and rider.Character:FindFirstChildOfClass("Humanoid")
-   if not humanoid or humanoid.Health<=0 or deer.seat.Occupant~=humanoid then
-    rider:SetAttribute("RidingReindeer",false) mountedDeer[rider]=nil deer.rider=nil
-   else
-    local input=os.clock()<deer.inputUntil and deer.input or Vector3.zero
-    target=current+input*4 speed=13
-   end
-  elseif deer.follow then
-   local root=deer.follow.Character and deer.follow.Character:FindFirstChild("HumanoidRootPart")
-   if not root or not deer.follow:GetAttribute("InventoryCarrot") then deer.follow=nil
-   else
-    target=Vector3.new(root.Position.X,3.2,root.Position.Z)
-    if (target-current).Magnitude<6 then target=current end
-    speed=7
+  if not deer.target or (deer.target-current).Magnitude<1 then
+   if deer.target then deer.pauseUntil=os.clock()+deerRandom:NextNumber(0.3,0.9) deer.target=nil end
+   if os.clock()>=deer.pauseUntil then
+    repeat deer.target=deer.center+Vector3.new(deerRandom:NextNumber(-14,14),0,deerRandom:NextNumber(-14,14))
+    until (deer.target-current).Magnitude>=7
    end
   end
-  if deer.petUntil and os.clock()<deer.petUntil and not deer.rider then target=current end
+  local target=deer.target or current
+  local speed=deer.tow and 5 or 6.5
+  if deer.petUntil and os.clock()<deer.petUntil then target=current end
   local delta=Vector3.new(target.X-current.X,0,target.Z-current.Z)
   local movement=delta.Magnitude>0.01 and delta.Unit*math.min(delta.Magnitude,speed*0.1) or Vector3.zero
   local params=RaycastParams.new()
   params.FilterType=Enum.RaycastFilterType.Exclude
   local exclude={deer.model}
-  if deer.follow and deer.follow.Character then table.insert(exclude,deer.follow.Character) end
-  if deer.rider and deer.rider.Character then table.insert(exclude,deer.rider.Character) end
   if deer.tow then table.insert(exclude,deer.tow) end
   params.FilterDescendantsInstances=exclude
-  if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero end
+  if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero deer.target=nil end
   local pos=Vector3.new(math.clamp(current.X+movement.X,-180,180),3.2,math.clamp(current.Z+movement.Z,-160,160))
   if math.abs(pos.X+105)<32 and math.abs(pos.Z-75)<26 then pos=current movement=Vector3.zero end
   local direction=movement.Magnitude>0.01 and movement.Unit or deer.model:GetPivot().LookVector
@@ -612,8 +559,11 @@ removeSkates=function(player)
  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
  if humanoid then humanoid.WalkSpeed=16 humanoid.AutoRotate=true humanoid.PlatformStand=false end
  local root=character and character:FindFirstChild("HumanoidRootPart")
- local force=root and root:FindFirstChild("SkatingMomentum")
- if force then force:Destroy() end
+ if root then
+  for _,child in root:GetChildren() do if child.Name=="SkatingMomentum" then child:Destroy() end end
+  root.AssemblyLinearVelocity=Vector3.new(0,root.AssemblyLinearVelocity.Y,0)
+  root.AssemblyAngularVelocity=Vector3.zero
+ end
  local gear=player.Character and player.Character:FindFirstChild("SkateGear")
  if gear then gear:Destroy() end
 end
@@ -625,6 +575,10 @@ prompt(rack,"Надеть / снять коньки",function(player)
  local character=player.Character
  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
  if not humanoid or humanoid.Health<=0 then return end
+ -- Remove stale gear and recover a fallen humanoid before starting a new session.
+ removeSkates(player)
+ humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=16,true,false
+ humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
  local previous=lastSkateColor[player] or 0
  local colorIndex
  repeat colorIndex=math.floor(skateRandom:NextNumber(1,#skateColors+0.999)) until colorIndex~=previous
@@ -674,6 +628,7 @@ prompt(rack,"Надеть / снять коньки",function(player)
    end
   end
  end
+ player:SetAttribute("SkateSession",(player:GetAttribute("SkateSession") or 0)+1)
  player:SetAttribute("SkatesEquipped",true)
  player:SetAttribute("WinterMessage","Коньки надеты! На льду разгоняйся клавишами движения")
 end)
@@ -713,7 +668,6 @@ end)
 local function initializePlayer(player)
  player.CharacterAdded:Connect(function()
   player:SetAttribute("SkatesEquipped",false)
-  player:SetAttribute("RidingReindeer",false)
   slipStates[player],wasOnIce[player]=nil,nil
  end)
 end
@@ -1071,11 +1025,5 @@ Players.PlayerRemoving:Connect(function(player)
  end
  slipStates[player]=nil
  lastSkateColor[player]=nil wasOnIce[player]=nil
- for _,deer in reindeer do
-  local involved=deer.follow==player or deer.rider==player
-  if deer.follow==player then deer.follow=nil end
-  if deer.rider==player then local occupant=deer.seat.Occupant if occupant then occupant.Sit=false end deer.rider=nil end
-  if involved and deer.tow then detachSled(deer) end
- end
- mountedDeer[player]=nil
+
 end)
