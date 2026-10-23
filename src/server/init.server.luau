@@ -13,6 +13,7 @@ local green = Color3.fromRGB(31, 100, 78)
 local gold = Color3.fromRGB(255, 200, 91)
 local removeSkates
 local navigationObstacles={}
+local houseCenters={{-43,-22},{58,-40},{-130,-100},{-40,125}}
 local snowLoungeCenters={Vector3.new(-220,0,-180),Vector3.new(220,0,180),Vector3.new(0,0,240),Vector3.new(220,0,60),Vector3.new(-235,0,0),Vector3.new(90,0,-220)}
 local function part(name, size, position, color, material, parent)
  local p = Instance.new("Part")
@@ -268,7 +269,7 @@ local function house(x,z,theme)
  end
  part("Ступень у входа",Vector3.new(8,0.6,3),Vector3.new(x,0.1,z+15),brown,Enum.Material.WoodPlanks)
  part("Верхняя ступень",Vector3.new(8,1.1,2),Vector3.new(x,0.45,z+13.5),brown,Enum.Material.WoodPlanks)
- for _,dx in ipairs({-8,8}) do
+ for _,dx in ipairs({-10,10}) do
   local seat=Instance.new("Seat")
   seat.Size,seat.Position,seat.Anchored=Vector3.new(4,1,4),Vector3.new(x+dx,3.2,z),true
   seat.Color,seat.Parent=accent,world
@@ -415,7 +416,7 @@ local function buildNavigationGrid()
  end end
  return grid
 end
-local function planDeerPath(position,random)
+local function planDeerPath(position,random,requestedGoal)
  if not navigationGrid then navigationGrid=buildNavigationGrid() end
  local start,best=nil,math.huge
  for _,node in navigationGrid do
@@ -437,8 +438,17 @@ local function planDeerPath(position,random)
    end
   end
  end
- if #distant==0 then return {} end
- local goal=distant[math.floor(random:NextNumber(1,#distant+0.999))]
+ local goal
+ if requestedGoal then
+  local closest=math.huge
+  for _,node in queue do
+   local distance=(node.point-requestedGoal).Magnitude
+   if distance<closest then goal,closest=node,distance end
+  end
+ else
+  if #distant==0 then return {} end
+  goal=distant[math.floor(random:NextNumber(1,#distant+0.999))]
+ end
  local reversed={}
  local node=goal
  while node do table.insert(reversed,node.point) node=parents[gridKey(node.x,node.z)] end
@@ -450,12 +460,57 @@ end
 local reindeer={}
 local tourSleds={}
 local deerRandom=Random.new(937)
+local companions={}
+local carrotCooldown={}
+local carrotAction=Instance.new("RemoteEvent")
+carrotAction.Name,carrotAction.Parent="CarrotAction",ReplicatedStorage
+local function waitForPlayer(deer)
+ if deer.leader then
+  companions[deer.leader]=nil
+  deer.leader:SetAttribute("CompanionDeer",nil)
+ end
+ deer.leader=nil deer.path={} deer.waypoint=1
+ deer.waitAnchor=deer.model:GetPivot().Position
+end
+carrotAction.OnServerEvent:Connect(function(player,action)
+ if action=="wait" then
+  local deer=companions[player]
+  if deer then waitForPlayer(deer) player:SetAttribute("WinterMessage","Олень подождёт здесь. Морковкой можно позвать снова") end
+  return
+ end
+ if action~="feed" then return end
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not root or not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Морковка для оленя") then return end
+ if carrotCooldown[player] and os.clock()-carrotCooldown[player]<0.8 then return end
+ if (player:GetAttribute("DeerCarrots") or 0)<=0 then player:SetAttribute("WinterMessage","Морковки закончились — пополни мешочек на боку оленя") return end
+ local closest,distance=nil,14
+ for _,deer in reindeer do
+  local d=(deer.model:GetPivot().Position-root.Position).Magnitude
+  if d<distance and (not deer.leader or deer.leader==player) then closest,distance=deer,d end
+ end
+ if not closest then player:SetAttribute("WinterMessage","Подойди ближе к свободному оленю") return end
+ carrotCooldown[player]=os.clock()
+ player:SetAttribute("DeerCarrots",player:GetAttribute("DeerCarrots")-1)
+ if companions[player] and companions[player]~=closest then waitForPlayer(companions[player]) end
+ closest.leader=player companions[player]=closest
+ closest.petUntil=os.clock()+1
+ closest.chewUntil=os.clock()+2
+ closest.path={} closest.waypoint=1 closest.repathAt=0
+ player:SetAttribute("CompanionDeer",closest.model.Name)
+ player:SetAttribute("WinterMessage","Хрум! Олень идёт за тобой. Можно вести к камину и снова угощать морковкой")
+ sound(closest.model.PrimaryPart,"rbxasset://sounds/action_footsteps_plastic.mp3",0.25)
+end)
+
 local function detachSled(deer)
  if not deer.tow then return end
  local sled=deer.tow
  for _,object in deer.towParts do object:Destroy() end
  sled:SetAttribute("TowedBy",nil)
  deer.tow,deer.towParts=nil,nil
+ deer.waitAnchor=deer.model:GetPivot().Position
+ deer.path={} deer.waypoint=1
 end
 for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.new(155,3.2,-140),Vector3.new(-160,3.2,-30),Vector3.new(-250,3.2,210),Vector3.new(245,3.2,215),Vector3.new(250,3.2,-210),Vector3.new(-250,3.2,-210)} do
  local model=Instance.new("Model") model.Name,model.Parent="Олень "..index,world
@@ -483,7 +538,14 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
    table.insert(legs,{part=leg,hoof=hoof,offset=offset,phase=side*(z>0 and 1 or -1)})
   end
  end
- local deer={model=model,center=center,legs=legs,path={},waypoint=1,pauseUntil=0}
+ local deer={model=model,center=center,legs=legs,path={},waypoint=1,pauseUntil=0,waitAnchor=center}
+ deer.faceParts={}
+ local faceNames={["Голова оленя"]=true,["Нос оленя"]=true,["Глаз оленя"]=true,["Ухо оленя"]=true,["Рог"]=true,["Отросток рога"]=true}
+ for _,detail in model:GetDescendants() do
+  if detail:IsA("BasePart") and faceNames[detail.Name] then
+   table.insert(deer.faceParts,{part=detail,offset=body.CFrame:ToObjectSpace(detail.CFrame)})
+  end
+ end
  table.insert(reindeer,deer)
  -- Each meadow has a small usable touring sled ready to hitch.
  local sled=Instance.new("Model") sled.Name,sled.Parent="Прогулочные санки",world
@@ -501,6 +563,31 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
  sledSeat:SetNetworkOwner(nil)
  sled:SetAttribute("Towable",true)
  table.insert(tourSleds,sled)
+ deer.homeSled=sled
+ local bag=round("Мешочек с морковками",Vector3.new(1.5,1.8,1.3),center+Vector3.new(1.9,-0.1,0.8),Color3.fromRGB(158,113,65),model)
+ rod("Ремешок мешочка",center+Vector3.new(1.5,1,0.2),center+Vector3.new(1.9,0.7,0.8),0.09,gold,model)
+ local bagCarrot=carrot(center+Vector3.new(2,0.8,0.8),model,0.55)
+ bagCarrot.Name="Морковка в мешочке"
+ prompt(bag,"Взять морковки",function(player)
+  player:SetAttribute("DeerCarrots",8)
+  local character=player.Character
+  if player.Backpack:FindFirstChild("Морковка для оленя") or (character and character:FindFirstChild("Морковка для оленя")) then
+   player:SetAttribute("WinterMessage","Мешочек пополнен: 8 морковок") return
+  end
+  local tool=Instance.new("Tool") tool.Name,tool.CanBeDropped="Морковка для оленя",false
+  local handle=carrot(Vector3.zero,tool,0.7)
+  handle.Name="Handle"
+  local details=handle:GetDescendants()
+  handle.Anchored,handle.CanCollide,handle.CanQuery,handle.Massless=false,false,false,true
+  for _,detail in details do
+   if detail:IsA("BasePart") then
+    detail.Anchored,detail.CanCollide,detail.CanQuery,detail.Massless=false,false,false,true
+    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=handle,detail,detail
+   end
+  end
+  tool.Parent=player.Backpack
+  player:SetAttribute("WinterMessage","Выбери морковку и нажми рядом с оленем: угостить и повести за собой")
+ end)
  prompt(sledSeat,"Сесть в санки • прыжок — выйти",function(player)
   local character=player.Character
   local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -518,6 +605,14 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
   Debris:AddItem(gui,2)
  end,"E")
  prompt(body,"Прицепить / отцепить ближайшие санки",function(player)
+  if deer.leader and deer.leader~=player then return end
+  if deer.visitRoom then
+   local house=houseCenters[deer.visitRoom]
+   local pos=body.Position
+   if math.abs(pos.X-house[1])<14 and math.abs(pos.Z-house[2])<14 then
+    player:SetAttribute("WinterMessage","Сначала выведи оленя из дома — санки прицепляют на улице") return
+   end
+  end
   if deer.tow then detachSled(deer) player:SetAttribute("WinterMessage","Санки отцеплены") return end
   local closest,distance=nil,30
   for _,candidate in world:GetChildren() do
@@ -546,16 +641,61 @@ RunService.Heartbeat:Connect(function(dt)
  if deerTick<0.1 then return end deerTick=0
  for _,deer in reindeer do
   local current=deer.model:GetPivot().Position
-  local target=deer.path[deer.waypoint]
-  if target and (target-current).Magnitude<1 then
-   deer.waypoint+=1 target=deer.path[deer.waypoint]
-   if not target then deer.pauseUntil=os.clock()+deerRandom:NextNumber(0.5,1.5) end
+  local target=current
+  local floorHeight=3.2
+  if deer.leader then
+   local leader=deer.leader
+   local root=leader.Character and leader.Character:FindFirstChild("HumanoidRootPart")
+   local humanoid=leader.Character and leader.Character:FindFirstChildOfClass("Humanoid")
+   if not root or not humanoid or humanoid.Health<=0 then waitForPlayer(deer)
+   else
+    local room
+    for index,house in houseCenters do
+     if math.abs(root.Position.X-house[1])<12 and math.abs(root.Position.Z-house[2])<11 then room=index break end
+    end
+    local goal=Vector3.new(root.Position.X,3.2,root.Position.Z)
+    if room then
+     local house=houseCenters[room]
+     if deer.tow then detachSled(deer) leader:SetAttribute("WinterMessage","Санки подождут снаружи, олень идёт к камину") end
+     if deer.visitRoom~=room then deer.visitRoom=room deer.entryStage=1 end
+     local stages={Vector3.new(house[1],3.2,house[2]+19),Vector3.new(house[1],5.4,house[2]+10),Vector3.new(house[1]+5.5,5.4,house[2]+7),Vector3.new(house[1]+5.5,5.4,house[2]-4)}
+     goal=stages[deer.entryStage]
+     if (Vector3.new(current.X,goal.Y,current.Z)-goal).Magnitude<1.5 and deer.entryStage<4 then
+      deer.entryStage+=1 goal=stages[deer.entryStage]
+     end
+     if deer.entryStage>=2 then floorHeight=5.4 end
+    elseif deer.visitRoom then
+     local house=houseCenters[deer.visitRoom]
+     goal=Vector3.new(house[1],5.4,house[2]+19)
+     floorHeight=current.Z<house[2]+14 and 5.4 or 3.2
+     if (Vector3.new(current.X,goal.Y,current.Z)-goal).Magnitude<2 then deer.visitRoom=nil end
+    end
+    local horizontal=(Vector3.new(goal.X,current.Y,goal.Z)-current).Magnitude
+    if horizontal<22 and (os.clock()>=(deer.forceRouteUntil or 0) or (room and deer.entryStage>=2)) then
+     target=goal
+     if not room and not deer.visitRoom and horizontal<6 then target=current end
+    else
+     if os.clock()>=(deer.repathAt or 0) or not deer.path[deer.waypoint] then
+      deer.path=planDeerPath(current,deerRandom,goal) deer.waypoint=1 deer.repathAt=os.clock()+2
+     end
+     target=deer.path[deer.waypoint] or current
+     if (target-current).Magnitude<1 then deer.waypoint+=1 target=deer.path[deer.waypoint] or current end
+    end
+   end
+  elseif deer.tow then
+   target=deer.path[deer.waypoint]
+   if target and (target-current).Magnitude<1 then
+    deer.waypoint+=1 target=deer.path[deer.waypoint]
+    if not target then deer.pauseUntil=os.clock()+deerRandom:NextNumber(0.5,1.5) end
+   end
+   if not target and os.clock()>=deer.pauseUntil then
+    deer.path=planDeerPath(current,deerRandom) deer.waypoint=1 target=deer.path[1]
+   end
+   target=target or current
+  else
+   target=deer.waitAnchor or current
+   floorHeight=target.Y
   end
-  if not target and os.clock()>=deer.pauseUntil then
-   deer.path=planDeerPath(current,deerRandom) deer.waypoint=1
-   target=deer.path[1]
-  end
-  target=target or current
   local speed=deer.tow and 6.5 or 8.2
   if deer.petUntil and os.clock()<deer.petUntil then target=current end
   local delta=Vector3.new(target.X-current.X,0,target.Z-current.Z)
@@ -564,15 +704,21 @@ RunService.Heartbeat:Connect(function(dt)
   params.FilterType=Enum.RaycastFilterType.Exclude
   local exclude={deer.model}
   if deer.tow then table.insert(exclude,deer.tow) end
+  if deer.leader and deer.leader.Character then table.insert(exclude,deer.leader.Character) end
   params.FilterDescendantsInstances=exclude
   if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero
    deer.blockedFor=(deer.blockedFor or 0)+0.1
+   if deer.leader then deer.forceRouteUntil=os.clock()+4 end
    if deer.blockedFor>1 then deer.path={} deer.pauseUntil=os.clock()+0.3 deer.blockedFor=0 end end
-  local pos=Vector3.new(math.clamp(current.X+movement.X,-302,302),3.2,math.clamp(current.Z+movement.Z,-272,272))
+  local pos=Vector3.new(math.clamp(current.X+movement.X,-302,302),floorHeight,math.clamp(current.Z+movement.Z,-272,272))
   if math.abs(pos.X+105)<32 and math.abs(pos.Z-75)<26 then pos=current movement=Vector3.zero end
   local direction=movement.Magnitude>0.01 and movement.Unit or deer.model:GetPivot().LookVector
   local frame=CFrame.lookAt(pos,pos+direction)
   deer.model:PivotTo(frame)
+  local chew=deer.chewUntil and os.clock()<deer.chewUntil
+  local nod=chew and (0.1+math.sin(os.clock()*9)*0.08) or 0
+  local headFrame=frame*CFrame.new(0,1.5,-2.5)*CFrame.Angles(nod,0,0)*CFrame.new(0,-1.5,2.5)
+  for _,detail in deer.faceParts do detail.part.CFrame=headFrame*detail.offset end
   for _,leg in deer.legs do
    leg.part.CFrame=frame*CFrame.new(leg.offset)*CFrame.Angles((movement.Magnitude>0.01 and math.sin(deerTime*4+leg.phase*math.pi/2)*0.25 or 0),0,math.pi/2)
    leg.hoof.CFrame=leg.part.CFrame*CFrame.new(-0.8,0,0)*CFrame.Angles(0,0,-math.pi/2)
@@ -1146,5 +1292,7 @@ Players.PlayerRemoving:Connect(function(player)
  end
  slipStates[player]=nil
  lastSkateColor[player]=nil wasOnIce[player]=nil
+ if companions[player] then waitForPlayer(companions[player]) end
+ carrotCooldown[player]=nil
 
 end)

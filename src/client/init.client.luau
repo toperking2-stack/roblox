@@ -24,12 +24,13 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v3 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v4 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
+ if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
 label.Size=UDim2.new(0,330,0,78)
 update()
-for _,name in {"SnowSize","InventorySticks","InventoryCarrot","InventoryBucket"} do player:GetAttributeChangedSignal(name):Connect(update) end
+for _,name in {"SnowSize","InventorySticks","InventoryCarrot","InventoryBucket","DeerCarrots"} do player:GetAttributeChangedSignal(name):Connect(update) end
 player:GetAttributeChangedSignal("WinterMessage"):Connect(function()
  label.Text=player:GetAttribute("WinterMessage") or ""
  task.delay(4,update)
@@ -59,7 +60,7 @@ speech.Parent=dialogue
 local answers={
  {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься! Для выхода есть проход у проката; X снимает коньки в любом месте."},
  {"Как собрать снеговика?","🎅 Дед Мороз\nНайди веточки, морковку и ведёрко. Накатай ком до 4 метров и принеси его на поляну снеговиков. Можно построить несколько — у каждого своя подсказка удаления."},
- {"Кто гуляет в лесу?","🎅 Дед Мороз\nЭто мои олени! Восемь оленей гуляют по всему парку. У одного красный нос — попробуй его найти. Ты можешь вернуться в дом и согреться чаем. Подойди и нажми E, чтобы погладить, или F, чтобы прицепить санки. В санки можно сесть пассажиром — олень повезёт тебя по зимнему парку."},
+ {"Как подружиться с оленем?","🎅 Дед Мороз\nЭто мои олени! Возьми морковки из мешочка на боку оленя, выбери морковку и нажми рядом с ним. Он пойдёт за тобой — можно привести к камину и угощать, пока ты пьёшь чай. Без упряжи или друга олени ждут санки."},
  {"До встречи!",false},
 }
 for i,answer in answers do
@@ -202,6 +203,13 @@ RunService.Heartbeat:Connect(function(dt)
  root.AssemblyLinearVelocity=Vector3.new(skateVelocity.X,root.AssemblyLinearVelocity.Y,skateVelocity.Z)
  for _,effect in skateEffects do effect.Enabled=skateVelocity.Magnitude>3 end
 end)
+local waitButton=Instance.new("TextButton")
+waitButton.Size,waitButton.Position=UDim2.fromOffset(170,36),UDim2.new(1,-185,1,-258)
+waitButton.Text,waitButton.TextSize="Олень: ждать здесь",14
+waitButton.BackgroundColor3,waitButton.TextColor3=Color3.fromRGB(72,94,67),Color3.fromRGB(255,239,214)
+waitButton.Visible,waitButton.Parent=false,gui
+waitButton.Activated:Connect(function() ReplicatedStorage:WaitForChild("CarrotAction"):FireServer("wait") end)
+player:GetAttributeChangedSignal("CompanionDeer"):Connect(function() waitButton.Visible=player:GetAttribute("CompanionDeer")~=nil end)
 local boundTools=setmetatable({}, {__mode="k"})
 local function playSound(parent,id,volume,speed)
  local audio=Instance.new("Sound")
@@ -228,7 +236,7 @@ end
 local function characterAdded(character)
  local function bind(child)
   if not child:IsA("Tool") or boundTools[child] then return end
-  if child.Name~="Снежки" and child.Name~="Горячий чай" then return end
+  if child.Name~="Снежки" and child.Name~="Горячий чай" and child.Name~="Морковка для оленя" then return end
   boundTools[child]=true
   local last=0
   local originalGrip=child.Grip
@@ -242,10 +250,13 @@ local function characterAdded(character)
   child.Unequipped:Connect(restore)
   child.Activated:Connect(function()
    local tea=child.Name=="Горячий чай"
+   local feeding=child.Name=="Морковка для оленя"
    if child.Parent~=character or os.clock()-last<(tea and 2.4 or 0.9) then return end
    last=os.clock()
    -- Gameplay is sent BEFORE optional arm/sound effects; an animation error cannot block throwing.
-   if not tea then
+   if feeding then
+    ReplicatedStorage:WaitForChild("CarrotAction"):FireServer("feed")
+   elseif not tea then
     local target=aimPoint(character)
     if target then ReplicatedStorage:WaitForChild("ThrowSnowball"):FireServer(target) end
    end

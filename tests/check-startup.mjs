@@ -124,7 +124,7 @@ defaultRayHit=nil
 assert(#reindeer==8,'eight reindeer')
 local deerBefore=reindeer[1].model:GetPivot().Position
 advance(1)
-assert((reindeer[1].model:GetPivot().Position-deerBefore).Magnitude>0.05,'reindeer move along woodland routes')
+assert((reindeer[1].model:GetPivot().Position-deerBefore).Magnitude<0.01,'unhitched deer waits by its sled')
 interact(santa)
 assert(player:GetAttribute('SantaGreeting')==1,'Father Frost dialogue trigger')
 -- Ice is above snow, unshod players fall and recover; the rack equips visible blades.
@@ -173,7 +173,7 @@ assert(not deer.tow,'sled can be unhitched')
 advance(3.2)
 local beforeWander=deer.model:GetPivot().Position
 advance(0.5)
-assert((deer.model:GetPivot().Position-beforeWander).Magnitude>1,'deer moves faster between destinations')
+assert((deer.model:GetPivot().Position-beforeWander).Magnitude<0.01,'unhitched deer keeps waiting')
 -- Expanded map: connected routes reach far beyond each original meadow.
 assert(named('Снежный остров').Size.X==640 and named('Снежный остров').Size.Z==580,'expanded island size')
 for _,animal in reindeer do
@@ -192,6 +192,35 @@ lounge.seats[1].Occupant=nil humanoid.Sit=false
 interact(lounge.zone)
 assert(lounge.seats[1].Occupant==humanoid,'drift can be used again after leaving')
 lounge.seats[1].Occupant=nil humanoid.Sit=false
+-- Companion flow: bag, feeding, leading and a visit to the hearth.
+local companion=reindeer[1]
+interact(companion.model:FindFirstChild('Мешочек с морковками'))
+assert(player:GetAttribute('DeerCarrots')==8,'bag supplies eight carrots')
+local carrotTool=assert(backpack:FindFirstChild('Морковка для оленя'))
+carrotTool.Parent=character
+root.Position=companion.model:GetPivot().Position+Vector3.new(0,2,2)
+named('CarrotAction').OnServerEvent:Fire(player,'feed')
+assert(player:GetAttribute('DeerCarrots')==7 and companion.leader==player,'feeding consumes carrot and starts following')
+local beforeLeading=companion.model:GetPivot().Position
+root.Position+=Vector3.new(14,0,0)
+advance(1.3)
+assert((companion.model:GetPivot().Position-beforeLeading).Magnitude>0.1,'companion follows the carrot holder')
+-- Bring the deer to the front door, then exercise the actual entry stages.
+companion.model:PivotTo(CFrame.new(-43,3.2,-3))
+root.Position=Vector3.new(-43,5,-20)
+carrotTool.Parent=backpack
+advance(5)
+assert(companion.visitRoom==1 and companion.entryStage==4,'companion enters the house through door stages')
+assert((companion.model:GetPivot().Position-Vector3.new(-37.5,5.4,-26)).Magnitude<2,'companion waits near fireplace on raised floor')
+interact(named('Стол с чаем'))
+assert(backpack:FindFirstChild('Горячий чай'),'player can get tea while deer stays nearby')
+carrotTool.Parent=character
+root.Position=companion.model:GetPivot().Position+Vector3.new(0,1,2)
+named('CarrotAction').OnServerEvent:Fire(player,'feed')
+assert(player:GetAttribute('DeerCarrots')==6 and companion.chewUntil>os.clock(),'feeding works by the fireplace')
+named('CarrotAction').OnServerEvent:Fire(player,'wait')
+assert(not companion.leader and not player:GetAttribute('CompanionDeer'),'wait button releases companion at current place')
+carrotTool.Parent=backpack
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -231,6 +260,20 @@ assert(soundsAfter>soundsBefore,'tea sip schedules audible effect')
 services.RunService.PreSimulation:Fire(0.1)
 assert(tea.Grip~=teaGripBefore,'tea grip animation changes the actual held-tool pose')
 tea.Unequipped:Fire()
+-- Tool activation really forwards carrot use from client to server.
+advance(1)
+local carrotTool=assert(backpack:FindFirstChild('Морковка для оленя'))
+tea.Parent=backpack
+carrotTool.Parent=character
+root.Position=reindeer[1].model:GetPivot().Position+Vector3.new(0,1,2)
+local foodBefore=player:GetAttribute('DeerCarrots')
+carrotTool.Activated:Fire()
+assert(player:GetAttribute('DeerCarrots')==foodBefore-1 and reindeer[1].leader==player,'client carrot tool feeds companion')
+for _,o in objects do
+ if o.ClassName=='TextButton' and o.Text=='Олень: ждать здесь' then o.Activated:Fire() end
+end
+assert(not reindeer[1].leader,'client wait button stops following')
+carrotTool.Parent=backpack carrotTool.Unequipped:Fire()
 -- Four complete sessions reproduce entering, exiting and putting skates back on.
 for cycle=1,4 do
  local previousColor=lastSkateColor[player]
@@ -291,5 +334,5 @@ return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\ndo\n'+client+'\nend\n'+clientChecks;
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, eight roaming deer and snow-lounge landing/reuse.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit and snow-lounge landing/reuse.');
 } finally { state.destroy(); }
