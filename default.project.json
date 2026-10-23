@@ -2,9 +2,63 @@
   "name": "WinterVillage",
   "tree": {
     "$className": "DataModel",
-    "ServerScriptService": {"WinterVillage": {"$path": "src/server"}},
-    "StarterPlayer": {"StarterPlayerScripts": {"WinterClient": {"$path": "src/client"}}},
-    "Workspace": {"$properties": {"FilteringEnabled": true}},
-    "Lighting": {"$properties": {"ClockTime": 19, "Brightness": 2, "Ambient": [0.32, 0.38, 0.55], "OutdoorAmbient": [0.4, 0.46, 0.62]}}
+    "ServerScriptService": {
+      "WinterVillage": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "WinterClient": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "FilteringEnabled": true,
+        "FallenPartsDestroyHeight": -60
+      },
+      "SafetyFoundation": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            180,
+            2,
+            150
+          ],
+          "Position": [
+            0,
+            -7,
+            0
+          ],
+          "Color": [
+            0.8,
+            0.88,
+            0.95
+          ],
+          "Material": "Snow",
+          "TopSurface": "Smooth",
+          "BottomSurface": "Smooth"
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "ClockTime": 19,
+        "Brightness": 2,
+        "Ambient": [
+          0.32,
+          0.38,
+          0.55
+        ],
+        "OutdoorAmbient": [
+          0.4,
+          0.46,
+          0.62
+        ]
+      }
+    }
   }
 }

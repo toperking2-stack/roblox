@@ -5,7 +5,6 @@ local Debris = game:GetService("Debris")
 local world = Instance.new("Model")
 world.Name = "WinterVillage"
 world.Parent = workspace
-workspace.FallenPartsDestroyHeight = -60
 local snow = Color3.fromRGB(239, 247, 255)
 local red = Color3.fromRGB(181, 48, 58)
 local green = Color3.fromRGB(31, 100, 78)

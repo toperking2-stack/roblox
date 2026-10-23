@@ -31,7 +31,6 @@ local Debris = game:GetService("Debris")
 local world = Instance.new("Model")
 world.Name = "WinterVillage"
 world.Parent = workspace
-workspace.FallenPartsDestroyHeight = -60
 local snow = Color3.fromRGB(239, 247, 255)
 local red = Color3.fromRGB(181, 48, 58)
 local green = Color3.fromRGB(31, 100, 78)
@@ -314,8 +313,29 @@ end)
   <Item class="Workspace" referent="6">
     <Properties>
       <string name="Name">Workspace</string>
+      <float name="FallenPartsDestroyHeight">-60</float>
       <bool name="FilteringEnabled">true</bool>
       <bool name="NeedsPivotMigration">false</bool>
     </Properties>
+    <Item class="Part" referent="7">
+      <Properties>
+        <string name="Name">SafetyFoundation</string>
+        <bool name="Anchored">true</bool>
+        <token name="BottomSurface">0</token>
+        <Color3uint8 name="Color3uint8">13426930</Color3uint8>
+        <token name="Material">1328</token>
+        <Vector3 name="Position">
+          <X>0</X>
+          <Y>-7</Y>
+          <Z>0</Z>
+        </Vector3>
+        <Vector3 name="size">
+          <X>180</X>
+          <Y>2</Y>
+          <Z>150</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+      </Properties>
+    </Item>
   </Item>
 </roblox>
