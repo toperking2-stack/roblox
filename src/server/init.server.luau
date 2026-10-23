@@ -12,6 +12,8 @@ local red = Color3.fromRGB(181, 48, 58)
 local green = Color3.fromRGB(31, 100, 78)
 local gold = Color3.fromRGB(255, 200, 91)
 local removeSkates
+local navigationObstacles={}
+local snowLoungeCenters={Vector3.new(-220,0,-180),Vector3.new(220,0,180),Vector3.new(0,0,240),Vector3.new(220,0,60),Vector3.new(-235,0,0),Vector3.new(90,0,-220)}
 local function part(name, size, position, color, material, parent)
  local p = Instance.new("Part")
  p.Name, p.Size, p.Position = name, size, position
@@ -128,14 +130,16 @@ local function light(on, color, range, brightness)
 end
 -- Tapered circular tiers produce a fir silhouette without uploaded meshes.
 local function tree(x,z,height)
+ table.insert(navigationObstacles,{x=x,z=z,radius=math.max(9,height*0.29+4)})
  part("Ствол",Vector3.new(1.2,height*0.32,1.2),Vector3.new(x,height*0.16,z),Color3.fromRGB(97,64,47),Enum.Material.Wood)
+ local rings=(math.abs(x)>180 or math.abs(z)>170) and 4 or 8
  for tier=0,3 do
   local base=height*(0.16+tier*0.19)
   local tierHeight=height*0.34
   local radius=height*(0.29-tier*0.055)
-  for ring=0,7 do
-   local width=math.max(0.15,radius*2*(1-ring/8))
-   local thickness=tierHeight/8
+  for ring=0,rings-1 do
+   local width=math.max(0.15,radius*2*(1-ring/rings))
+   local thickness=tierHeight/rings
    local disc=part("Еловые ветви",Vector3.new(thickness+0.04,width,width),Vector3.new(x,base+ring*thickness,z),green)
    disc.Shape=Enum.PartType.Cylinder
    disc.Orientation=Vector3.new(0,0,90)
@@ -147,7 +151,7 @@ local function tree(x,z,height)
   end
  end
 end
-part("Снежный остров",Vector3.new(400,5,360),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
+part("Снежный остров",Vector3.new(640,5,580),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
 part("Дорожка",Vector3.new(12,0.15,145),Vector3.new(0,0.1,0),Color3.fromRGB(186,211,229),Enum.Material.Ice)
 local spawn = Instance.new("SpawnLocation")
 spawn.Name, spawn.Size, spawn.Position = "Добро пожаловать", Vector3.new(8,1,8), Vector3.new(0,0.5,50)
@@ -330,14 +334,18 @@ for _,path in paths do
 end
 local forestRandom=Random.new(479)
 local clearings={
+ {-250,210,24,24},{245,215,24,24},{250,-210,24,24},{-250,-210,24,24},
  {-155,135,22,22},{150,125,22,22},{155,-140,22,22},{-160,-30,22,22},
  {-43,-22,28,27},{58,-40,28,27},{-130,-100,29,27},{-40,125,28,27},
  {85,88,30,70},{135,-5,30,100},{30,-65,30,100},
  {-105,75,42,36},{-98,-45,35,32},{-40,43,37,29},{0,-12,27,35},
 }
-for _=1,170 do
- local x,z=forestRandom:NextNumber(-178,178),forestRandom:NextNumber(-155,155)
+for _=1,240 do
+ local x,z=forestRandom:NextNumber(-298,298),forestRandom:NextNumber(-268,268)
  local clear=math.abs(x)<16
+ for _,center in snowLoungeCenters do
+  if math.abs(x-center.X)<20 and math.abs(z-center.Z)<20 then clear=true end
+ end
  for _,path in paths do
   local dx,dz=path[3]-path[1],path[4]-path[2]
   local t=math.clamp(((x-path[1])*dx+(z-path[2])*dz)/(dx*dx+dz*dz),0,1)
@@ -382,7 +390,63 @@ round("Мех шапки",Vector3.new(3.2,0.5,3.2),Vector3.new(23,11.3,-10),snow
 round("Помпон",Vector3.new(0.9,0.9,0.9),Vector3.new(23.6,13.3,-10),snow,santaModel)
 sign(santa,"ДЕД МОРОЗ • E — поговорить",Vector3.new(0,8.5,0))
 prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaGreeting",(player:GetAttribute("SantaGreeting") or 0)+1) end)
--- Animated reindeer follow small woodland routes, clear of houses and sled runouts.
+-- Ground navigation across the expanded park. A cached grid avoids houses, ice,
+-- slopes, trees and drift lounges. Each flood search chooses a reachable distant goal.
+local navigationRects={
+ {-43,-22,22,22},{58,-40,22,22},{-130,-100,22,22},{-40,125,22,22},
+ {-105,75,36,30},{85,50,22,42},{135,-45,22,53},{30,-105,22,45},
+}
+local navigationGrid
+local function gridKey(x,z) return x..":"..z end
+local function buildNavigationGrid()
+ local grid={}
+ for x=-18,18 do for z=-16,16 do
+  local wx,wz=x*16,z*16
+  local blocked=false
+  for _,rect in navigationRects do
+   if math.abs(wx-rect[1])<rect[3] and math.abs(wz-rect[2])<rect[4] then blocked=true break end
+  end
+  if not blocked then
+   for _,obstacle in navigationObstacles do
+    if (wx-obstacle.x)^2+(wz-obstacle.z)^2<obstacle.radius^2 then blocked=true break end
+   end
+  end
+  if not blocked then grid[gridKey(x,z)]={x=x,z=z,point=Vector3.new(wx,3.2,wz)} end
+ end end
+ return grid
+end
+local function planDeerPath(position,random)
+ if not navigationGrid then navigationGrid=buildNavigationGrid() end
+ local start,best=nil,math.huge
+ for _,node in navigationGrid do
+  local distance=(node.point-position).Magnitude
+  if distance<best then start,best=node,distance end
+ end
+ if not start then return {} end
+ local queue={start}
+ local parents={[gridKey(start.x,start.z)]=false}
+ local distant={}
+ local cursor=1
+ while cursor<=#queue do
+  local node=queue[cursor] cursor+=1
+  if (node.point-position).Magnitude>100 then table.insert(distant,node) end
+  for _,offset in {{1,0},{-1,0},{0,1},{0,-1}} do
+   local key=gridKey(node.x+offset[1],node.z+offset[2])
+   if navigationGrid[key] and parents[key]==nil then
+    parents[key]=node table.insert(queue,navigationGrid[key])
+   end
+  end
+ end
+ if #distant==0 then return {} end
+ local goal=distant[math.floor(random:NextNumber(1,#distant+0.999))]
+ local reversed={}
+ local node=goal
+ while node do table.insert(reversed,node.point) node=parents[gridKey(node.x,node.z)] end
+ local path={}
+ for i=#reversed,1,-1 do table.insert(path,reversed[i]) end
+ return path
+end
+-- Eight reindeer can travel between distant reachable areas of the park.
 local reindeer={}
 local tourSleds={}
 local deerRandom=Random.new(937)
@@ -393,7 +457,7 @@ local function detachSled(deer)
  sled:SetAttribute("TowedBy",nil)
  deer.tow,deer.towParts=nil,nil
 end
-for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.new(155,3.2,-140),Vector3.new(-160,3.2,-30)} do
+for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.new(155,3.2,-140),Vector3.new(-160,3.2,-30),Vector3.new(-250,3.2,210),Vector3.new(245,3.2,215),Vector3.new(250,3.2,-210),Vector3.new(-250,3.2,-210)} do
  local model=Instance.new("Model") model.Name,model.Parent="Олень "..index,world
  local body=round("Тело оленя",Vector3.new(3.5,3.1,6),center,Color3.fromRGB(139,91,56),model)
  model.PrimaryPart=body
@@ -419,7 +483,7 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
    table.insert(legs,{part=leg,hoof=hoof,offset=offset,phase=side*(z>0 and 1 or -1)})
   end
  end
- local deer={model=model,center=center,legs=legs,target=center+Vector3.new(index%2==0 and 12 or -12,0,8),pauseUntil=0}
+ local deer={model=model,center=center,legs=legs,path={},waypoint=1,pauseUntil=0}
  table.insert(reindeer,deer)
  -- Each meadow has a small usable touring sled ready to hitch.
  local sled=Instance.new("Model") sled.Name,sled.Parent="Прогулочные санки",world
@@ -473,7 +537,7 @@ for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.
   closest:SetAttribute("TowedBy",model.Name)
   closest.PrimaryPart:SetNetworkOwner(nil)
   deer.tow,deer.towParts=closest,{rope,a,b}
-  player:SetAttribute("WinterMessage","Санки прицеплены! Садись в них — олень повезёт по полянке")
+  player:SetAttribute("WinterMessage","Санки прицеплены! Садись в них — олень повезёт по парку")
  end,"F")
 end
 local deerTime,deerTick=0,0
@@ -482,15 +546,17 @@ RunService.Heartbeat:Connect(function(dt)
  if deerTick<0.1 then return end deerTick=0
  for _,deer in reindeer do
   local current=deer.model:GetPivot().Position
-  if not deer.target or (deer.target-current).Magnitude<1 then
-   if deer.target then deer.pauseUntil=os.clock()+deerRandom:NextNumber(0.3,0.9) deer.target=nil end
-   if os.clock()>=deer.pauseUntil then
-    repeat deer.target=deer.center+Vector3.new(deerRandom:NextNumber(-14,14),0,deerRandom:NextNumber(-14,14))
-    until (deer.target-current).Magnitude>=7
-   end
+  local target=deer.path[deer.waypoint]
+  if target and (target-current).Magnitude<1 then
+   deer.waypoint+=1 target=deer.path[deer.waypoint]
+   if not target then deer.pauseUntil=os.clock()+deerRandom:NextNumber(0.5,1.5) end
   end
-  local target=deer.target or current
-  local speed=deer.tow and 5 or 6.5
+  if not target and os.clock()>=deer.pauseUntil then
+   deer.path=planDeerPath(current,deerRandom) deer.waypoint=1
+   target=deer.path[1]
+  end
+  target=target or current
+  local speed=deer.tow and 6.5 or 8.2
   if deer.petUntil and os.clock()<deer.petUntil then target=current end
   local delta=Vector3.new(target.X-current.X,0,target.Z-current.Z)
   local movement=delta.Magnitude>0.01 and delta.Unit*math.min(delta.Magnitude,speed*0.1) or Vector3.zero
@@ -499,8 +565,10 @@ RunService.Heartbeat:Connect(function(dt)
   local exclude={deer.model}
   if deer.tow then table.insert(exclude,deer.tow) end
   params.FilterDescendantsInstances=exclude
-  if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero deer.target=nil end
-  local pos=Vector3.new(math.clamp(current.X+movement.X,-180,180),3.2,math.clamp(current.Z+movement.Z,-160,160))
+  if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero
+   deer.blockedFor=(deer.blockedFor or 0)+0.1
+   if deer.blockedFor>1 then deer.path={} deer.pauseUntil=os.clock()+0.3 deer.blockedFor=0 end end
+  local pos=Vector3.new(math.clamp(current.X+movement.X,-302,302),3.2,math.clamp(current.Z+movement.Z,-272,272))
   if math.abs(pos.X+105)<32 and math.abs(pos.Z-75)<26 then pos=current movement=Vector3.zero end
   local direction=movement.Magnitude>0.01 and movement.Unit or deer.model:GetPivot().LookVector
   local frame=CFrame.lookAt(pos,pos+direction)
@@ -513,13 +581,66 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 -- Winter park: rounded drifts, a frozen pond and three guided sled routes.
 local random=Random.new(2026)
-for i=1,38 do
- local x=(i%2==0 and -1 or 1)*random:NextNumber(95,180)
- local z=random:NextNumber(-155,155)
+for i=1,65 do
+ local x=(i%2==0 and -1 or 1)*random:NextNumber(95,290)
+ local z=random:NextNumber(-258,258)
  if math.abs(x+105)<40 and math.abs(z-75)<36 then z=-150 end
+ for _,center in snowLoungeCenters do
+  if math.abs(x-center.X)<20 and math.abs(z-center.Z)<20 then z=center.Z>0 and -250 or 250 end
+ end
  local drift=ball("Сугроб",1,Vector3.new(x,-0.6,z),snow)
  drift.Size=Vector3.new(random:NextNumber(9,20),random:NextNumber(3,7),random:NextNumber(9,20))
  drift.Material=Enum.Material.Snow
+ table.insert(navigationObstacles,{x=x,z=z,radius=12})
+end
+local snowLounges={}
+for index,center in snowLoungeCenters do
+ table.insert(navigationRects,{center.X,center.Z,13,13})
+ local zone=part("Мягкий сугроб "..index,Vector3.new(12,6,12),center+Vector3.new(0,2,0),snow)
+ zone.Transparency,zone.CanCollide=1,false
+ for lobe=1,6 do
+  local angle=lobe*math.pi/3
+  local mound=round("Пушистый край сугроба",Vector3.new(6,3.8,6),center+Vector3.new(math.cos(angle)*5,0.8,math.sin(angle)*5),snow)
+  mound.Material=Enum.Material.Snow
+ end
+ part("Снежная подушка",Vector3.new(7,0.3,7),center+Vector3.new(0,0.15,0),snow,Enum.Material.Snow)
+ local seats={}
+ for _,offset in ipairs({-1.7,1.7}) do
+  local seat=Instance.new("Seat")
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch,seat.CanCollide,seat.Transparency="Отдых в снегу",Vector3.new(2,0.4,2),true,false,false,1
+  seat.Position,seat.Parent=center+Vector3.new(offset,0.8,0),world
+  table.insert(seats,seat)
+ end
+ local puff=Instance.new("ParticleEmitter")
+ puff.Texture,puff.Rate,puff.Lifetime="rbxasset://textures/particles/sparkles_main.dds",0,NumberRange.new(0.4,0.9)
+ puff.Speed,puff.SpreadAngle,puff.Size=NumberRange.new(3,8),Vector2.new(180,180),NumberSequence.new(0.2)
+ puff.Parent=zone
+ local function relax(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit then return end
+  for _,seat in seats do
+   if not seat.Occupant then
+    if removeSkates then removeSkates(player) end
+    local root=character:FindFirstChild("HumanoidRootPart")
+    if root then root.AssemblyLinearVelocity=Vector3.zero end
+    character:PivotTo(seat.CFrame*CFrame.new(0,2,0))
+    seat:Sit(humanoid)
+    puff:Emit(35)
+    sound(zone,"rbxasset://sounds/action_footsteps_plastic.mp3",0.25)
+    player:SetAttribute("WinterMessage","Плюх! Устраивайся в снегу ☃ Прыжок — выйти")
+    return
+   end
+  end
+ end
+ prompt(zone,"Плюхнуться и отдохнуть",relax)
+ sign(zone,"МЯГКИЙ СУГРОБ • прыгай или нажми E",Vector3.new(0,4,0))
+ zone.Touched:Connect(function(hit)
+  local player=Players:GetPlayerFromCharacter(hit.Parent)
+  local root=player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+  if root and root.AssemblyLinearVelocity.Y< -5 then relax(player) end
+ end)
+ table.insert(snowLounges,{zone=zone,seats=seats,puff=puff})
 end
 local pond=part("Ледяной каток",Vector3.new(58,1,45),Vector3.new(-105,1.15,75),Color3.fromRGB(102,183,213),Enum.Material.Ice)
 pond.Reflectance=0.55

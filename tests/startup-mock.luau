@@ -125,6 +125,9 @@ function methods:GetFocusedTextBox() return nil end
 function methods:IsKeyDown(key) return mockKeys[key]==true end
 function methods:Stop() self.Played=false end
 function methods:ChangeState(value) self.State=value end
+function methods:GetPlayerFromCharacter(character)
+ for _,player in self:GetPlayers() do if player.Character==character then return player end end
+end
 function methods:GetPlayers()
  local result={} for _,o in self:GetChildren() do if o.ClassName=='Player' then table.insert(result,o) end end return result
 end

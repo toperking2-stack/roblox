@@ -121,7 +121,7 @@ interact(first.PrimaryPart)
 assert(#builtByPlayer[player]==1 and builtByPlayer[player][1].Parent,'individual snowman removal')
 defaultRayHit=nil
 -- Deer follow a route; Father Frost opens dialogue only after close interaction.
-assert(#reindeer==4,'four reindeer')
+assert(#reindeer==8,'eight reindeer')
 local deerBefore=reindeer[1].model:GetPivot().Position
 advance(1)
 assert((reindeer[1].model:GetPivot().Position-deerBefore).Magnitude>0.05,'reindeer move along woodland routes')
@@ -174,6 +174,24 @@ advance(3.2)
 local beforeWander=deer.model:GetPivot().Position
 advance(0.5)
 assert((deer.model:GetPivot().Position-beforeWander).Magnitude>1,'deer moves faster between destinations')
+-- Expanded map: connected routes reach far beyond each original meadow.
+assert(named('Снежный остров').Size.X==640 and named('Снежный остров').Size.Z==580,'expanded island size')
+for _,animal in reindeer do
+ local route=planDeerPath(animal.model:GetPivot().Position,deerRandom)
+ assert(#route>3 and (route[#route]-animal.model:GetPivot().Position).Magnitude>100,'deer chooses a distant reachable goal')
+ for i=2,#route do assert((route[i]-route[i-1]).Magnitude<=16.01,'route stays on connected grid') end
+end
+assert(#snowLounges==6,'six interactive snow lounges')
+local lounge=snowLounges[1]
+root.Position=lounge.zone.Position+Vector3.new(0,3,0)
+root.AssemblyLinearVelocity=Vector3.new(0,-18,0)
+lounge.zone.Touched:Fire(root)
+assert(lounge.seats[1].Occupant==humanoid and humanoid.Sit,'jumping into drift seats player')
+assert(lounge.puff.Emitted==35,'drift landing emits snow puff')
+lounge.seats[1].Occupant=nil humanoid.Sit=false
+interact(lounge.zone)
+assert(lounge.seats[1].Occupant==humanoid,'drift can be used again after leaving')
+lounge.seats[1].Occupant=nil humanoid.Sit=false
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -273,5 +291,5 @@ return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\ndo\n'+client+'\nend\n'+clientChecks;
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery and two reindeer actions.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, eight roaming deer and snow-lounge landing/reuse.');
 } finally { state.destroy(); }
