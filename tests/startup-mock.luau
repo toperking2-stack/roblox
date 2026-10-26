@@ -1,6 +1,7 @@
 -- Deterministic API mock: construction and gameplay logic, not Roblox physics/rendering.
 local objects={}
 local mockKeys={}
+local mockActions={}
 local clockNow=0
 local realOs=os
 os={clock=function() return clockNow end}
@@ -123,6 +124,8 @@ function methods:Destroy()
 end
 function methods:Sit(humanoid) self.Occupant=humanoid humanoid.Sit=true end
 function methods:Play() self.Played=true end
+function methods:BindActionAtPriority(name,callback) mockActions[name]=callback end
+function methods:UnbindAction(name) mockActions[name]=nil end
 function methods:GetFocusedTextBox() return nil end
 function methods:IsKeyDown(key) return mockKeys[key]==true end
 function methods:Stop() self.Played=false end
@@ -172,7 +175,7 @@ Instance={new=function(class)
  table.insert(objects,v)
  return v
 end}
-for _,name in {'Players','ReplicatedStorage','Debris','TweenService','RunService','UserInputService','SoundService'} do services[name]=Instance.new(name) end
+for _,name in {'Players','ReplicatedStorage','Debris','TweenService','RunService','UserInputService','SoundService','ContextActionService'} do services[name]=Instance.new(name) end
 function methods:AddItem(object,seconds) task.delay(seconds,function() object:Destroy() end) end
 game={GetService=function(_,name) return assert(services[name],name) end}
 workspace=Instance.new('Workspace')

@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v8 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v8.1 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -431,6 +431,9 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 local function setupFlightControls()
+ local wheelClimb=0
+ local wheelBound=false
+ local actions=game:GetService("ContextActionService")
  local touchTurn,touchThrottle,touchClimb=0,0,0
  local buttons={}
  local flightHUD=Instance.new("TextLabel")
@@ -463,11 +466,21 @@ local function setupFlightControls()
   local pilot=player:GetAttribute("AircraftPilot")~=nil
   local chute=player:GetAttribute("ParachuteOpen")==true
   local passenger=player:GetAttribute("AircraftPassenger")~=nil
+  if pilot and not wheelBound then
+   wheelBound=true wheelClimb=0
+   actions:BindActionAtPriority("AircraftWheelHeight",function(_,_,input)
+    if not player:GetAttribute("AircraftPilot") then return Enum.ContextActionResult.Pass end
+    wheelClimb=math.clamp(wheelClimb-input.Position.Z*0.25,-1,1)
+    return Enum.ContextActionResult.Sink
+   end,false,3000,Enum.UserInputType.MouseWheel)
+  elseif not pilot and wheelBound then
+   wheelBound=false wheelClimb=0 actions:UnbindAction("AircraftWheelHeight")
+  end
   flightHUD.Visible=pilot or passenger or chute
   jumpButton.Visible=pilot or passenger or player:GetAttribute("HasParachute")==true
   for i,button in buttons do button.Visible=pilot or (chute and i<=4) end
   if chute then flightHUD.Text="ПАРАШЮТ\nWASD — направлять • приземление автоматически"
-  elseif pilot then flightHUD.Text="ПИЛОТ • скорость "..tostring(player:GetAttribute("FlightSpeed") or 0).." • высота "..tostring(player:GetAttribute("FlightHeight") or 0).."\nW/S — скорость • A/D — поворот • ↑/↓ — набор/снижение • R — парашют"
+  elseif pilot then flightHUD.Text="ПИЛОТ • скорость "..tostring(player:GetAttribute("FlightSpeed") or 0).." • высота "..tostring(player:GetAttribute("FlightHeight") or 0).."\nW/S — скорость • A/D — поворот • Колесо ↓ — вверх, ↑ — вниз • R — парашют"
   else flightHUD.Text="ПАССАЖИР\nR или прыжок — покинуть самолёт с парашютом" end
   if not pilot and not chute then touchTurn,touchThrottle,touchClimb=0,0,0 end
  end
@@ -489,14 +502,14 @@ local function setupFlightControls()
   local chute=player:GetAttribute("ParachuteOpen")==true
   if not pilot and not chute then timer=0 return end
   timer+=dt if timer<0.1 then return end timer=0
-  local x,y,z=touchTurn,touchThrottle,touchClimb
+  local x,y,z=touchTurn,touchThrottle,(touchClimb~=0 and touchClimb or wheelClimb)
   if not UserInputService:GetFocusedTextBox() then
    if UserInputService:IsKeyDown(Enum.KeyCode.A) then x-=1 end
    if UserInputService:IsKeyDown(Enum.KeyCode.D) then x+=1 end
    if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
    if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
-   if UserInputService:IsKeyDown(Enum.KeyCode.Up) then z+=1 end
-   if UserInputService:IsKeyDown(Enum.KeyCode.Down) then z-=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.Up) then z=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.Down) then z=-1 end
   end
   x,y,z=math.clamp(x,-1,1),math.clamp(y,-1,1),math.clamp(z,-1,1)
   if chute then

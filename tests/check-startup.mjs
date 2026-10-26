@@ -499,9 +499,18 @@ mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.Up]=true,true
 services.RunService.Heartbeat:Fire(0.15)
 assert(plane.throttle==1 and plane.climb==1,'client flight keyboard input reaches pilot controller')
 mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.Up]=false,false
+assert(mockActions.AircraftWheelHeight,'pilot wheel handler bound')
+mockActions.AircraftWheelHeight(nil,nil,{Position=Vector3.new(0,0,-1)})
+services.RunService.Heartbeat:Fire(0.15)
+assert(plane.climb>0,'wheel down commands climb')
+mockActions.AircraftWheelHeight(nil,nil,{Position=Vector3.new(0,0,1)})
+mockActions.AircraftWheelHeight(nil,nil,{Position=Vector3.new(0,0,1)})
+services.RunService.Heartbeat:Fire(0.15)
+assert(plane.climb<0,'wheel up commands descent')
 plane.model:PivotTo(CFrame.new(plane.home.X,100,plane.home.Z))
 services.UserInputService.JumpRequest:Fire()
 assert(player:GetAttribute('ParachuteOpen') and airportState.parachutes[player],'client jump opens parachute from airborne plane')
+assert(not mockActions.AircraftWheelHeight,'eject restores normal mouse wheel')
 plane.seats[1].Occupant=nil humanoid.Sit=false
 mockKeys[Enum.KeyCode.D]=true
 services.RunService.Heartbeat:Fire(0.15)
