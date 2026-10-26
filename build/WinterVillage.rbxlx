@@ -363,6 +363,7 @@ for _,path in paths do
 end
 local forestRandom=Random.new(479)
 local clearings={
+ {-15,70,12,12},{15,70,12,12},
  {-250,210,24,24},{245,215,24,24},{250,-210,24,24},{-250,-210,24,24},
  {-155,135,22,22},{150,125,22,22},{155,-140,22,22},{-160,-30,22,22},
  {-43,-22,28,27},{58,-40,28,27},{-130,-100,29,27},{-40,125,28,27},
@@ -417,6 +418,17 @@ for i=0,7 do
 end
 round("Мех шапки",Vector3.new(3.2,0.5,3.2),Vector3.new(23,11.3,-10),snow,santaModel)
 round("Помпон",Vector3.new(0.9,0.9,0.9),Vector3.new(23.6,13.3,-10),snow,santaModel)
+-- All Father Frost details form one anchored assembly, with visible joint coverage.
+rod("Шея Деда Мороза",Vector3.new(23,8.4,-10),Vector3.new(23,9.5,-10),1,Color3.fromRGB(245,202,170),santaModel)
+for _,side in ipairs({-1,1}) do
+ round("Плечо шубы",Vector3.new(2,2,2),Vector3.new(23+side*2.2,7.2,-10),red,santaModel)
+end
+for _,piece in santaModel:GetDescendants() do
+ if piece:IsA("BasePart") and piece~=santa then
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=santa,piece,piece
+  piece.Anchored,piece.Massless,piece.CanCollide=false,true,false
+ end
+end
 sign(santa,"ДЕД МОРОЗ • E — поговорить",Vector3.new(0,8.5,0))
 prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaGreeting",(player:GetAttribute("SantaGreeting") or 0)+1) end)
 -- Ground navigation across the expanded park. A cached grid avoids houses, ice,
@@ -1573,6 +1585,115 @@ for _=1,40 do tree(alpineRandom:NextNumber(-510,-335),alpineRandom:NextNumber(-3
 
 local mountainGuide=part("Указатель к горе",Vector3.new(0.7,4,0.7),Vector3.new(10,2,55),green,Enum.Material.Wood)
 sign(mountainGuide,"БОЛЬШАЯ ГОРА →\nФуникулёр справа от деревни",Vector3.new(0,4,0))
+
+-- Two-seat vehicles at spawn. Server physics keeps steering authority with the driver.
+local spawnVehicles={}
+local groundDrivers={}
+local groundInput=Instance.new("RemoteEvent")
+groundInput.Name,groundInput.Parent="GroundVehicleControl",ReplicatedStorage
+groundInput.OnServerEvent:Connect(function(player,input)
+ local vehicle=groundDrivers[player]
+ if not vehicle or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or input.Z~=input.Z
+  or math.abs(input.X)>1 or math.abs(input.Y)>1 or math.abs(input.Z)>1 then return end
+ if not vehicle.driver.Occupant or vehicle.driver.Occupant.Health<=0 or vehicle.driver.Occupant.Parent~=player.Character then return end
+ vehicle.steer,vehicle.throttle,vehicle.boost,vehicle.untilInput=input.X,input.Y,input.Z>0,os.clock()+0.5
+end)
+for index,name in {"Снегоход","Реактивные сани"} do
+ local position=Vector3.new(index==1 and -15 or 15,2,70)
+ local model=Instance.new("Model") model.Name,model.Parent=name,world
+ local root=part("Шасси",Vector3.new(4.6,1,8),position,index==1 and green or red,Enum.Material.Metal,model)
+ model.PrimaryPart=root
+ root.CustomPhysicalProperties=PhysicalProperties.new(1,0.15,0.03)
+ local function detail(name,size,offset,color,material)
+  local p=part(name,size,position+offset,color,material or Enum.Material.SmoothPlastic,model)
+  p.CanCollide=false
+  return p
+ end
+ for _,side in ipairs({-1,1}) do
+  local runner=detail("Лыжа шасси",Vector3.new(0.65,0.4,7.5),Vector3.new(side*2,-1.1,0),Color3.fromRGB(117,149,172),Enum.Material.Metal)
+  runner.CanCollide=true runner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.03)
+  detail("Крепление лыжи",Vector3.new(0.4,1,2),Vector3.new(side*2,-0.5,0),gold,Enum.Material.Metal)
+ end
+ local hood=detail("Обтекаемый капот",Vector3.new(4.4,1.6,3.4),Vector3.new(0,0.7,-2.5),index==1 and green or red)
+ hood.Shape=Enum.PartType.Ball
+ local lightPanel=detail("Фара",Vector3.new(2,0.4,0.2),Vector3.new(0,0.7,-4.05),gold,Enum.Material.Neon)
+ local headlight=Instance.new("SpotLight") headlight.Face,headlight.Range,headlight.Brightness,headlight.Parent=Enum.NormalId.Front,35,2,lightPanel
+ local driver,passenger=Instance.new("Seat"),Instance.new("Seat")
+ for seatIndex,seat in {driver,passenger} do
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место "..(seatIndex==1 and "водителя" or "пассажира"),Vector3.new(2.3,0.4,2.4),true,false
+  seat.Position,seat.Color,seat.Parent=position+Vector3.new(index==1 and 0 or (seatIndex==1 and -1.2 or 1.2),1.1,index==1 and (seatIndex==1 and -0.4 or 2) or 0.5),Color3.fromRGB(48,47,58),model
+ end
+ detail("Руль",Vector3.new(2.4,0.2,0.2),driver.Position-position+Vector3.new(0,1,-1.4),gold,Enum.Material.Metal)
+ local jetFires={}
+ if index==2 then
+  for _,side in ipairs({-1,1}) do
+   local nozzle=detail("Реактивное сопло",Vector3.new(1.1,1.1,2),Vector3.new(side*1.4,0.4,4),Color3.fromRGB(73,88,106),Enum.Material.Metal)
+   nozzle.Shape=Enum.PartType.Cylinder nozzle.Orientation=Vector3.new(0,90,0)
+   local fire=Instance.new("Fire")
+   fire.Size,fire.Heat,fire.Color,fire.SecondaryColor,fire.Enabled,fire.Parent=2,2,Color3.fromRGB(255,142,52),gold,false,nozzle
+   table.insert(jetFires,fire)
+  end
+ else
+  detail("Гусеница",Vector3.new(2.8,0.7,4),Vector3.new(0,-0.9,1.4),Color3.fromRGB(37,42,48),Enum.Material.SmoothPlastic)
+ end
+ for _,p in model:GetDescendants() do if p:IsA("BasePart") and p~=root then
+  p.Anchored,p.Massless=false,true
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=root,p,p
+ end end
+ root.Anchored=false root:SetNetworkOwner(nil)
+ local gyro=Instance.new("BodyGyro")
+ gyro.Name,gyro.MaxTorque,gyro.P,gyro.D="Стабилизация транспорта",Vector3.new(80000,80000,80000),20000,800
+ gyro.CFrame,gyro.Parent=CFrame.new(),root
+ local vehicle={model=model,root=root,driver=driver,passenger=passenger,speed=0,yaw=0,steer=0,throttle=0,boost=false,untilInput=0,fires=jetFires,maxSpeed=index==1 and 55 or 90}
+ table.insert(spawnVehicles,vehicle)
+ local function board(player,seat)
+  local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or seat.Occupant then return end
+  removeSkates(player)
+  character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid)
+ end
+ prompt(driver,"Водитель: сесть",function(player) board(player,driver) end)
+ prompt(passenger,"Пассажир: сесть",function(player) board(player,passenger) end,"F")
+ sign(root,name.." • два места\nW/S — скорость • A/D — поворот",Vector3.new(0,5,0))
+ driver:GetPropertyChangedSignal("Occupant"):Connect(function()
+  if vehicle.player then
+   groundDrivers[vehicle.player]=nil vehicle.player:SetAttribute("GroundDriving",nil) vehicle.player:SetAttribute("GroundSpeed",nil)
+  end
+  vehicle.player=nil vehicle.steer,vehicle.throttle,vehicle.boost=0,0,false
+  local humanoid=driver.Occupant
+  local player=humanoid and Players:GetPlayerFromCharacter(humanoid.Parent)
+  if player then
+   vehicle.player=player groundDrivers[player]=vehicle root:SetNetworkOwner(nil)
+   player:SetAttribute("GroundDriving",name)
+   player:SetAttribute("WinterMessage",name..": W/S — разгон и торможение, A/D — поворот, прыжок — выйти"..(index==2 and ", Shift — форсаж" or ""))
+  end
+ end)
+end
+RunService.Heartbeat:Connect(function(dt)
+ dt=math.min(dt,0.1)
+ for _,vehicle in spawnVehicles do
+  local steer,throttle,boost=0,0,false
+  if vehicle.player and os.clock()<vehicle.untilInput then steer,throttle,boost=vehicle.steer,vehicle.throttle,vehicle.boost end
+  if throttle~=0 then vehicle.speed=vehicle.speed+throttle*36*dt
+  else vehicle.speed=vehicle.speed*math.exp(-2*dt) end
+  vehicle.speed=math.clamp(vehicle.speed,-16,boost and vehicle.maxSpeed==90 and 125 or vehicle.maxSpeed)
+  vehicle.yaw-=steer*1.7*dt*math.min(math.abs(vehicle.speed)/12,1)*(vehicle.speed>=0 and 1 or -1)
+  local direction=Vector3.new(-math.sin(vehicle.yaw),0,-math.cos(vehicle.yaw))
+  vehicle.root.AssemblyLinearVelocity=direction*vehicle.speed+Vector3.new(0,vehicle.root.AssemblyLinearVelocity.Y,0)
+  vehicle.root:FindFirstChild("Стабилизация транспорта").CFrame=CFrame.Angles(0,vehicle.yaw,0)
+  for _,fire in vehicle.fires do fire.Enabled=vehicle.speed>5 fire.Size=boost and 4 or 2 end
+  if vehicle.player then vehicle.player:SetAttribute("GroundSpeed",math.floor(math.abs(vehicle.speed))) end
+  if math.abs(vehicle.root.Position.X)>530 or math.abs(vehicle.root.Position.Z)>430 then
+   vehicle.speed=0
+   vehicle.model:PivotTo(CFrame.new(math.clamp(vehicle.root.Position.X,-520,520),3,math.clamp(vehicle.root.Position.Z,-420,420)))
+  end
+ end
+end)
+Players.PlayerRemoving:Connect(function(player)
+ local vehicle=groundDrivers[player]
+ if vehicle then vehicle.player=nil vehicle.throttle,vehicle.steer=0,0 end
+ groundDrivers[player]=nil
+end)
 ]]></string>
       </Properties>
     </Item>
@@ -1614,7 +1735,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v5 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v6 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -1968,21 +2089,34 @@ local alpineSpeed=Instance.new("TextLabel")
 alpineSpeed.Size,alpineSpeed.Position=UDim2.fromOffset(285,38),UDim2.new(1,-300,1,-202)
 alpineSpeed.BackgroundTransparency,alpineSpeed.TextSize,alpineSpeed.TextColor3=0.2,15,Color3.fromRGB(255,240,214)
 alpineSpeed.BackgroundColor3,alpineSpeed.Visible,alpineSpeed.Parent=Color3.fromRGB(35,62,80),false,gui
+local spawnBoost=false
+local boostButton=Instance.new("TextButton")
+boostButton.Size,boostButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,60)
+boostButton.Text,boostButton.TextSize,boostButton.Visible="Форсаж",15,false
+boostButton.BackgroundColor3,boostButton.TextColor3=Color3.fromRGB(150,76,45),Color3.fromRGB(255,239,214)
+boostButton.Parent=gui
+boostButton.MouseButton1Down:Connect(function() spawnBoost=true end)
+boostButton.MouseButton1Up:Connect(function() spawnBoost=false end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.Touch then spawnBoost=false end end)
 local function updateAlpineHUD()
- local driving=player:GetAttribute("MountainDriving")==true
+ local driving=player:GetAttribute("MountainDriving")==true or player:GetAttribute("GroundDriving")~=nil
+ boostButton.Visible=player:GetAttribute("GroundDriving")=="Реактивные сани"
+ if not boostButton.Visible then spawnBoost=false end
  for _,button in alpineButtons do button.Visible=driving end
  alpineSpeed.Visible=driving
- alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
+ alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("GroundSpeed") or player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
  if not driving then alpineTouchX,alpineTouchY=0,0 end
 end
 player:GetAttributeChangedSignal("MountainDriving"):Connect(updateAlpineHUD)
 player:GetAttributeChangedSignal("MountainSpeed"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("GroundDriving"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("GroundSpeed"):Connect(updateAlpineHUD)
 UserInputService.InputEnded:Connect(function(input)
  if input.UserInputType==Enum.UserInputType.Touch then alpineTouchX,alpineTouchY=0,0 end
 end)
 local alpineInputTime=0
 RunService.Heartbeat:Connect(function(dt)
- if not player:GetAttribute("MountainDriving") then alpineInputTime=0 return end
+ if not player:GetAttribute("MountainDriving") and not player:GetAttribute("GroundDriving") then alpineInputTime=0 return end
  alpineInputTime+=dt
  if alpineInputTime<0.1 then return end alpineInputTime=0
  local x,y=alpineTouchX,alpineTouchY
@@ -1992,7 +2126,9 @@ RunService.Heartbeat:Connect(function(dt)
   if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
   if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
  end
- ReplicatedStorage:WaitForChild("MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),0))
+ local ground=player:GetAttribute("GroundDriving")
+ local boost=(spawnBoost or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)) and 1 or 0
+ ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost))
 end)
 ]]></string>
         </Properties>

@@ -277,6 +277,48 @@ for _,sled in world:GetChildren() do
   assert(sled:FindFirstChild('Место друга'),'existing sled has friend seat')
  end
 end
+local function checkSpawnVehicles()
+ assert(#spawnVehicles==2,'two spawn vehicles')
+ -- Verify physical connectivity, rather than just a model grouping.
+ for _,piece in santaModel:GetDescendants() do
+  if piece:IsA('BasePart') and piece~=santa then
+   assert(not piece.Anchored,'Father Frost detail belongs to root assembly')
+   local connected=false
+   for _,joint in piece:GetChildren() do
+    if joint:IsA('WeldConstraint') and joint.Part0==santa and joint.Part1==piece then connected=true end
+   end
+   assert(connected,'Father Frost body detail welded to torso')
+  end
+ end
+ local snowmobile=spawnVehicles[1]
+ interact(snowmobile.driver,'Водитель: сесть')
+ assert(groundDrivers[player]==snowmobile,'driver gains ground vehicle authority')
+ friendRoot.Position=snowmobile.passenger.Position+Vector3.new(0,3,0)
+ for _,prompt in snowmobile.passenger:GetChildren() do if prompt:IsA('ProximityPrompt') then prompt.Triggered:Fire(friend) end end
+ assert(snowmobile.driver.Occupant==humanoid and snowmobile.passenger.Occupant==friendHumanoid,'two people share snowmobile')
+ named('GroundVehicleControl').OnServerEvent:Fire(friend,Vector3.new(1,1,0))
+ assert(snowmobile.throttle==0,'passenger cannot drive')
+ named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0.5,1,0))
+ advance(0.3)
+ assert(snowmobile.speed>0 and snowmobile.yaw~=0,'snowmobile accelerates and turns')
+ local speed=snowmobile.speed
+ named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0,-1,0))
+ advance(0.2)
+ assert(snowmobile.speed<speed,'snowmobile brakes')
+ snowmobile.driver.Occupant=nil humanoid.Sit=false
+ assert(not groundDrivers[player] and not player:GetAttribute('GroundDriving'),'driver exit clears controls')
+ assert(snowmobile.passenger.Occupant==friendHumanoid,'passenger remains seated after driver exits')
+ snowmobile.passenger.Occupant=nil friendHumanoid.Sit=false
+ local jet=spawnVehicles[2]
+ interact(jet.driver,'Водитель: сесть')
+ for _=1,14 do
+  named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0,1,1))
+  advance(0.3)
+ end
+ assert(jet.speed>90 and jet.speed<=125 and jet.fires[1].Enabled,'jet sled boost increases speed and shows exhaust')
+ jet.driver.Occupant=nil humanoid.Sit=false
+end
+checkSpawnVehicles()
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -395,9 +437,16 @@ assert(mountainControls[player].steer==1 and mountainControls[player].throttle==
 mockKeys[Enum.KeyCode.D],mockKeys[Enum.KeyCode.W]=false,false
 services.UserInputService.JumpRequest:Fire()
 assert(not mountainRiders[player] and not humanoid.PlatformStand,'jump request exits snowboard and restores control')
+interact(spawnVehicles[1].driver,'Водитель: сесть')
+mockKeys[Enum.KeyCode.W]=true
+services.RunService.Heartbeat:Fire(0.15)
+assert(spawnVehicles[1].throttle==1,'client keyboard controls spawn vehicle')
+mockKeys[Enum.KeyCode.W]=false
+spawnVehicles[1].driver.Occupant=nil humanoid.Sit=false
+assert(not player:GetAttribute('GroundDriving'),'client UI exits vehicle mode')
 return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\nlocal function runClient()\n'+client+'\nend\nrunClient()\nlocal function runClientChecks()\n'+clientChecks+'\nend\nreturn runClientChecks()';
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit, snow lounges, summit lift, two-person sled descent and repeated ski/snowboard dismount.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit, snow lounges, summit lift, two-person sled descent, repeated dismount, connected Father Frost and two-seat spawn vehicle controls.');
 } finally { state.destroy(); }
