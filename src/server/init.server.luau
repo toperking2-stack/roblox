@@ -1616,7 +1616,10 @@ for index,name in {"Снегоход","Реактивные сани"} do
  local gyro=Instance.new("BodyGyro")
  gyro.Name,gyro.MaxTorque,gyro.P,gyro.D="Стабилизация транспорта",Vector3.new(80000,80000,80000),20000,800
  gyro.CFrame,gyro.Parent=CFrame.new(),root
- local vehicle={model=model,root=root,driver=driver,passenger=passenger,speed=0,yaw=0,steer=0,throttle=0,boost=false,untilInput=0,fires=jetFires,maxSpeed=index==1 and 55 or 90}
+ local drive=Instance.new("BodyVelocity")
+ drive.Name,drive.P,drive.MaxForce,drive.Velocity="Привод транспорта",10000,Vector3.zero,Vector3.zero
+ drive.Parent=root
+ local vehicle={model=model,root=root,driver=driver,passenger=passenger,drive=drive,speed=0,yaw=0,steer=0,throttle=0,boost=false,untilInput=0,fires=jetFires,maxSpeed=index==1 and 55 or 90}
  table.insert(spawnVehicles,vehicle)
  local function board(player,seat)
   local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -1627,7 +1630,10 @@ for index,name in {"Снегоход","Реактивные сани"} do
  prompt(driver,"Водитель: сесть",function(player) board(player,driver) end)
  prompt(passenger,"Пассажир: сесть",function(player) board(player,passenger) end,"F")
  sign(root,name.." • два места\nW/S — скорость • A/D — поворот",Vector3.new(0,5,0))
- driver:GetPropertyChangedSignal("Occupant"):Connect(function()
+ local function syncDriver()
+  local occupant=driver.Occupant
+  local nextPlayer=occupant and Players:GetPlayerFromCharacter(occupant.Parent)
+  if nextPlayer==vehicle.player then return end
   if vehicle.player then
    groundDrivers[vehicle.player]=nil vehicle.player:SetAttribute("GroundDriving",nil) vehicle.player:SetAttribute("GroundSpeed",nil)
   end
@@ -1639,11 +1645,15 @@ for index,name in {"Снегоход","Реактивные сани"} do
    player:SetAttribute("GroundDriving",name)
    player:SetAttribute("WinterMessage",name..": W/S — разгон и торможение, A/D — поворот, прыжок — выйти"..(index==2 and ", Shift — форсаж" or ""))
   end
- end)
+ end
+ vehicle.syncDriver=syncDriver
+ driver:GetPropertyChangedSignal("Occupant"):Connect(syncDriver)
+ passenger:GetPropertyChangedSignal("Occupant"):Connect(function() root:SetNetworkOwner(nil) end)
 end
 RunService.Heartbeat:Connect(function(dt)
  dt=math.min(dt,0.1)
  for _,vehicle in spawnVehicles do
+  vehicle.syncDriver()
   local steer,throttle,boost=0,0,false
   if vehicle.player and os.clock()<vehicle.untilInput then steer,throttle,boost=vehicle.steer,vehicle.throttle,vehicle.boost end
   if throttle~=0 then vehicle.speed=vehicle.speed+throttle*36*dt
@@ -1651,7 +1661,10 @@ RunService.Heartbeat:Connect(function(dt)
   vehicle.speed=math.clamp(vehicle.speed,-16,boost and vehicle.maxSpeed==90 and 125 or vehicle.maxSpeed)
   vehicle.yaw-=steer*1.7*dt*math.min(math.abs(vehicle.speed)/12,1)*(vehicle.speed>=0 and 1 or -1)
   local direction=Vector3.new(-math.sin(vehicle.yaw),0,-math.cos(vehicle.yaw))
-  vehicle.root.AssemblyLinearVelocity=direction*vehicle.speed+Vector3.new(0,vehicle.root.AssemblyLinearVelocity.Y,0)
+  local powered=vehicle.player and vehicle.driver.Occupant and vehicle.driver.Occupant.Health>0
+  local force=powered and math.max(50000,vehicle.root.AssemblyMass*400) or 0
+  vehicle.drive.MaxForce=Vector3.new(force,0,force)
+  vehicle.drive.Velocity=direction*vehicle.speed
   vehicle.root:FindFirstChild("Стабилизация транспорта").CFrame=CFrame.Angles(0,vehicle.yaw,0)
   for _,fire in vehicle.fires do fire.Enabled=vehicle.speed>5 fire.Size=boost and 4 or 2 end
   if vehicle.player then vehicle.player:SetAttribute("GroundSpeed",math.floor(math.abs(vehicle.speed))) end

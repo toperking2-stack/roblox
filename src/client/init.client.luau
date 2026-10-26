@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v6 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v6.1 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end

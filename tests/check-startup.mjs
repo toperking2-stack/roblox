@@ -301,12 +301,15 @@ local function checkSpawnVehicles()
  named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0.5,1,0))
  advance(0.3)
  assert(snowmobile.speed>0 and snowmobile.yaw~=0,'snowmobile accelerates and turns')
+ assert(snowmobile.drive.MaxForce.X>0 and snowmobile.drive.MaxForce.Y==0 and snowmobile.drive.Velocity.Magnitude>0,'physics drive maintains horizontal traction with driver and passenger')
  local speed=snowmobile.speed
  named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0,-1,0))
  advance(0.2)
  assert(snowmobile.speed<speed,'snowmobile brakes')
  snowmobile.driver.Occupant=nil humanoid.Sit=false
  assert(not groundDrivers[player] and not player:GetAttribute('GroundDriving'),'driver exit clears controls')
+ advance(0.1)
+ assert(snowmobile.drive.MaxForce.Magnitude==0,'exit disables drive force without pinning passenger')
  assert(snowmobile.passenger.Occupant==friendHumanoid,'passenger remains seated after driver exits')
  snowmobile.passenger.Occupant=nil friendHumanoid.Sit=false
  local jet=spawnVehicles[2]

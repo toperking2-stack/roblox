@@ -164,7 +164,7 @@ local objectMeta={
 }
 Instance={new=function(class)
  local v=setmetatable({},objectMeta)
- properties[v]={ClassName=class,Name=class,attributes={},Position=Vector3.zero,CFrame=CFrame.new(),AssemblyLinearVelocity=Vector3.zero,Grip=CFrame.new()}
+ properties[v]={ClassName=class,Name=class,attributes={},Position=Vector3.zero,CFrame=CFrame.new(),AssemblyLinearVelocity=Vector3.zero,AssemblyMass=90,Grip=CFrame.new()}
  if class=="ParticleEmitter" or class=="Trail" then properties[v].Enabled=true end
  if class=="Humanoid" then properties[v].PlatformStand=false properties[v].Sit=false properties[v].WalkSpeed=16 properties[v].AutoRotate=true end
  events[v]={} children[v]={}
