@@ -1742,12 +1742,26 @@ local function setupAirport()
 local airportCenter=Vector3.new(-650,0,0)
 local runway=part("Взлётная полоса",Vector3.new(130,0.4,700),Vector3.new(-650,0.2,0),Color3.fromRGB(63,76,91),Enum.Material.Asphalt)
 for z=-300,300,35 do
- part("Разметка полосы",Vector3.new(3,0.06,18),Vector3.new(-650,0.44,z),snow)
+ if math.abs(z)<250 then part("Разметка полосы",Vector3.new(3,0.06,18),Vector3.new(-650,0.44,z),snow) end
  for _,x in ipairs({-717,-583}) do
   local lamp=part("Огонь ВПП",Vector3.new(0.6,0.5,0.6),Vector3.new(x,0.7,z),gold,Enum.Material.Neon)
   light(lamp,gold,7,0.4)
  end
 end
+for _,side in ipairs({-1,1}) do
+ part("Краевая линия ВПП",Vector3.new(1.3,0.06,700),Vector3.new(-650+side*62,0.46,0),snow)
+ for i=-3,4 do
+  part("Порог полосы",Vector3.new(4,0.06,19),Vector3.new(-650+i*8-4,0.46,side*330),snow)
+ end
+ local plate=part("Номер полосы",Vector3.new(22,0.04,32),Vector3.new(-650,0.49,side*285),Color3.fromRGB(63,76,91))
+ local gui=Instance.new("SurfaceGui") gui.Face,gui.CanvasSize,gui.Parent=Enum.NormalId.Top,Vector2.new(160,240),plate
+ local label=Instance.new("TextLabel")
+ label.Size,label.BackgroundTransparency,label.Text,label.TextSize=UDim2.fromScale(1,1),1,side<0 and "19" or "01",150
+ label.TextColor3,label.Font,label.Rotation,label.Parent=snow,Enum.Font.GothamBold,side<0 and 180 or 0,gui
+ for _,x in ipairs({-18,18}) do part("Зона приземления",Vector3.new(6,0.06,27),Vector3.new(-650+x,0.46,side*185),snow) end
+end
+part("Перрон аэропорта",Vector3.new(150,0.3,155),Vector3.new(-740,0.22,240),Color3.fromRGB(109,121,137),Enum.Material.Concrete)
+part("Рулёжная линия",Vector3.new(125,0.05,1.3),Vector3.new(-712,0.44,230),gold)
 part("Аэропорт: пол",Vector3.new(60,1,55),Vector3.new(-800,0.5,230),Color3.fromRGB(117,130,148),Enum.Material.Concrete)
 part("Аэропорт: крыша",Vector3.new(64,1,59),Vector3.new(-800,17,230),snow)
 for _,x in ipairs({-830,-770}) do
@@ -1767,6 +1781,42 @@ for _,path in {{Vector3.new(60,0.18,145),Vector3.new(60,0.18,350)},{Vector3.new(
 end
 local airportGuide=part("Указатель в аэропорт",Vector3.new(0.6,4,0.6),Vector3.new(-10,2,55),green)
 sign(airportGuide,"АЭРОПОРТ ←\nДорога через южную часть парка",Vector3.new(0,4,0))
+local airportStaff={}
+for _,job in {
+ {"Регистратор",Vector3.new(-800,3,240),"E у кресла — пилот, F — пассажир. Самолёты стоят на перроне у терминала."},
+ {"Диспетчер",Vector3.new(-780,3,158),"W — разгон. Колесо вниз — вверх, колесо вверх — вниз. Для взлёта нужна скорость больше 40."},
+ {"Авиамеханик",Vector3.new(-705,3,275),"Если самолёт остался далеко, верни пустой борт кнопкой возле стоянки. С людьми внутри возврат запрещён."},
+ {"Маршал перрона",Vector3.new(-705,3,300),"Следуй жёлтой линии к полосе. Парашют открывается кнопкой R или прыжком из самолёта."},
+ {"Охрана аэропорта",Vector3.new(-760,3,340),"Добро пожаловать! Не оставляй машину на взлётной полосе."},
+} do
+ local model=Instance.new("Model") model.Name,model.Parent=job[1],world
+ local center=job[2]
+ local body=round("Форма сотрудника",Vector3.new(2.2,2.6,1.3),center,Color3.fromRGB(44,73,110),model)
+ model.PrimaryPart=body
+ round("Голова сотрудника",Vector3.new(1.45,1.6,1.45),center+Vector3.new(0,2.1,0),Color3.fromRGB(235,194,162),model)
+ for _,side in ipairs({-1,1}) do
+  rod("Брюки сотрудника",center+Vector3.new(side*0.55,-0.8,0),center+Vector3.new(side*0.55,-2.2,0),0.33,Color3.fromRGB(39,49,67),model,Enum.Material.Fabric)
+  round("Ботинок сотрудника",Vector3.new(0.8,0.6,1.2),center+Vector3.new(side*0.55,-2.4,0.2),Color3.fromRGB(29,34,42),model)
+  rod("Рукав сотрудника",center+Vector3.new(side*1,0.8,0),center+Vector3.new(side*1.5,-0.6,0.2),0.32,Color3.fromRGB(44,73,110),model,Enum.Material.Fabric)
+  round("Кисть сотрудника",Vector3.new(0.5,0.6,0.5),center+Vector3.new(side*1.5,-0.8,0.2),Color3.fromRGB(235,194,162),model)
+  round("Глаз сотрудника",Vector3.new(0.12,0.15,0.12),center+Vector3.new(side*0.25,2.2,0.7),Color3.fromRGB(31,40,48),model)
+ end
+ part("Кепка сотрудника",Vector3.new(1.65,0.45,1.65),center+Vector3.new(0,3,0),Color3.fromRGB(44,73,110),nil,model)
+ if job[1]=="Маршал перрона" or job[1]=="Авиамеханик" then
+  part("Сигнальный жилет",Vector3.new(2.25,1.9,1.35),center+Vector3.new(0,0.15,0),Color3.fromRGB(248,166,49),Enum.Material.Fabric,model)
+  part("Светоотражатель",Vector3.new(2.3,0.2,1.4),center+Vector3.new(0,0.1,0),snow,nil,model)
+ end
+ if job[1]=="Маршал перрона" then
+  for _,side in ipairs({-1,1}) do rod("Сигнальный жезл",center+Vector3.new(side*1.5,-0.5,0.5),center+Vector3.new(side*1.8,0.6,0.8),0.09,side<0 and red or green,model,Enum.Material.Neon) end
+ end
+ for _,piece in model:GetDescendants() do if piece:IsA("BasePart") and piece~=body then
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=body,piece,piece
+  piece.Anchored,piece.CanCollide,piece.Massless=false,false,true
+ end end
+ sign(body,job[1].." • E — спросить",Vector3.new(0,4,0))
+ prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage",job[1]..": "..job[3]) end)
+ table.insert(airportStaff,model)
+end
 local aircraft={}
 local flightPilots={}
 local parachutes={}
@@ -1831,19 +1881,66 @@ airInput.OnServerEvent:Connect(function(player,input)
 end)
 for index,name in {"Маленький самолёт","Большой самолёт"} do
  local large=index==2
- local home=Vector3.new(large and -618 or -683,large and 6.8 or 4.2,245)
+ local home=Vector3.new(large and -738 or -755,large and 6.8 or 4.2,large and 280 or 180)
  local planeModel=Instance.new("Model") planeModel.Name,planeModel.Parent=name,world
- local root=round("Фюзеляж",Vector3.new(large and 8 or 4,large and 8 or 4,large and 44 or 22),home,large and snow or gold,planeModel)
+ local root=round("Фюзеляж",Vector3.new(large and 7 or 3.6,large and 7 or 3.6,large and 32 or 15),home,snow,planeModel)
  planeModel.PrimaryPart=root
- local span=large and 78 or 42
- part("Крылья",Vector3.new(span,0.7,large and 9 or 6),home+Vector3.new(0,-0.2,2),large and Color3.fromRGB(62,112,175) or red,Enum.Material.Metal,planeModel)
- part("Хвостовые крылья",Vector3.new(span*0.4,0.5,4),home+Vector3.new(0,1,large and 18 or 8),red,nil,planeModel)
- local fin=part("Киль",Vector3.new(0.7,large and 9 or 5,5),home+Vector3.new(0,large and 5 or 3,large and 18 or 8),green,nil,planeModel)
- local glass=round("Стекло кабины",Vector3.new(large and 7 or 3.5,large and 5 or 3.6,large and 11 or 7),home+Vector3.new(0,2,large and -14 or -6),Color3.fromRGB(132,191,219),planeModel)
- glass.Material,glass.Transparency=Enum.Material.Glass,0.35
+ local span=large and 52 or 32
+ local body=part("Центральный корпус",Vector3.new(large and 28 or 14,large and 7 or 3.6,large and 7 or 3.6),home,snow,Enum.Material.SmoothPlastic,planeModel)
+ body.Shape,body.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+ round("Обтекаемый нос",Vector3.new(large and 6.9 or 3.5,large and 6.9 or 3.5,large and 12 or 7),home+Vector3.new(0,0,large and -17 or -8),snow,planeModel)
+ for section=0,9 do
+  local diameter=(large and 7 or 3.6)*(1-section/11)
+  local tail=part("Сужение хвоста",Vector3.new(large and 1.3 or 0.8,diameter,diameter),home+Vector3.new(0,0,(large and 12 or 6)+section*(large and 1.2 or 0.7)),snow,nil,planeModel)
+  tail.Shape,tail.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+ end
+ local function sweptWing(name,halfSpan,chord,z,y,color)
+  part(name.." • центроплан",Vector3.new(large and 8 or 4,0.65,chord),home+Vector3.new(0,y,z),color,Enum.Material.Metal,planeModel)
+  for _,side in ipairs({-1,1}) do
+   local wing=Instance.new("WedgePart")
+   wing.Name,wing.Size,wing.Anchored=name,Vector3.new(0.65,halfSpan,chord),true
+   wing.Color,wing.Material,wing.Parent=color,Enum.Material.Metal,planeModel
+   wing.CFrame=CFrame.new(home+Vector3.new(side*(halfSpan/2+(large and 3 or 1.5)),y,z))*CFrame.Angles(0,0,side>0 and -math.pi/2 or math.pi/2)
+  end
+ end
+ sweptWing("Стреловидное крыло",span/2-3,large and 11 or 7,3,-0.3,large and Color3.fromRGB(219,230,241) or snow)
+ sweptWing("Хвостовой стабилизатор",large and 13 or 7,large and 5 or 3,large and 19 or 10,1,large and Color3.fromRGB(45,101,166) or red)
+ local fin=Instance.new("WedgePart")
+ fin.Name,fin.Size,fin.Anchored="Хвостовой киль",Vector3.new(0.6,large and 9 or 5,large and 8 or 4.5),true
+ fin.Position,fin.Color,fin.Parent=home+Vector3.new(0,large and 5 or 3,large and 19 or 10),large and Color3.fromRGB(45,101,166) or red,planeModel
  for _,side in ipairs({-1,1}) do
-  local wheel=part("Шасси самолёта",Vector3.new(0.8,large and 2.8 or 1.5,large and 2.8 or 1.5),home+Vector3.new(side*(large and 3 or 1.7),large and -5 or -3,2),Color3.fromRGB(35,41,49),nil,planeModel)
+  local navigation=round("Бортовой огонь",Vector3.new(0.6,0.6,0.6),home+Vector3.new(side*(span/2-1),0,5),side<0 and red or green,planeModel)
+  navigation.Material=Enum.Material.Neon
+  if large then
+   for z=-8,10,2.4 do
+    round("Иллюминатор",Vector3.new(0.12,0.95,0.72),home+Vector3.new(side*3.52,0.8,z),Color3.fromRGB(42,80,111),planeModel)
+   end
+   part("Полоса ливреи",Vector3.new(0.09,0.35,23),home+Vector3.new(side*3.53,-0.6,0),Color3.fromRGB(45,101,166),nil,planeModel)
+  else
+   part("Красная ливрея",Vector3.new(0.06,0.28,10),home+Vector3.new(side*1.81,-0.4,0),red,nil,planeModel)
+   rod("Подкос крыла",home+Vector3.new(side*1.5,-1,1),home+Vector3.new(side*10,-0.4,3),0.1,Color3.fromRGB(135,150,169),planeModel,Enum.Material.Metal)
+  end
+ end
+ if large then
+  local front=part("Лобовое стекло пилотов",Vector3.new(5.2,1.6,0.15),home+Vector3.new(0,2.5,-21.3),Color3.fromRGB(43,83,112),Enum.Material.Glass,planeModel)
+  front.Orientation,front.Transparency=Vector3.new(-15,0,0),0.15
+  for _,side in ipairs({-1,1}) do
+   local glass=part("Боковое стекло кабины",Vector3.new(0.14,1.6,3.5),home+Vector3.new(side*3.3,1.9,-16.5),Color3.fromRGB(43,83,112),Enum.Material.Glass,planeModel)
+   glass.Transparency=0.15
+  end
+ else
+  local glass=round("Фонарь кабины",Vector3.new(3.3,3.4,5.5),home+Vector3.new(0,1.9,-5.5),Color3.fromRGB(107,175,205),planeModel)
+  glass.Material,glass.Transparency=Enum.Material.Glass,0.25
+ end
+ for _,side in ipairs({-1,1}) do
+  local wheel=part("Шасси самолёта",Vector3.new(0.8,large and 2.8 or 1.5,large and 2.8 or 1.5),home+Vector3.new(side*(large and 3 or 1.7),large and -5 or -3,5),Color3.fromRGB(35,41,49),nil,planeModel)
   wheel.Shape=Enum.PartType.Cylinder
+ end
+ local noseWheel=part("Переднее шасси",Vector3.new(0.6,large and 2.4 or 1.5,large and 2.4 or 1.5),home+Vector3.new(0,large and -5.2 or -3,large and -12 or -6),Color3.fromRGB(35,41,49),nil,planeModel)
+ noseWheel.Shape=Enum.PartType.Cylinder
+ rod("Передняя стойка шасси",home+Vector3.new(0,-1,large and -12 or -6),home+Vector3.new(0,large and -5.2 or -3,large and -12 or -6),0.15,Color3.fromRGB(153,166,182),planeModel,Enum.Material.Metal)
+ for _,side in ipairs({-1,1}) do
+  rod("Стойка основного шасси",home+Vector3.new(side*(large and 2.5 or 1.5),-1,4),home+Vector3.new(side*(large and 3 or 1.7),large and -5 or -3,5),0.15,Color3.fromRGB(153,166,182),planeModel,Enum.Material.Metal)
  end
  local seats={}
  for n=1,(large and 6 or 2) do
@@ -1860,6 +1957,12 @@ for index,name in {"Маленький самолёт","Большой само�
   for _,side in ipairs({-1,1}) do
    local engine=part("Двигатель большого самолёта",Vector3.new(8,3,3),home+Vector3.new(side*18,-2,0),Color3.fromRGB(120,140,161),Enum.Material.Metal,planeModel)
    engine.Shape,engine.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+   for _,depth in ipairs({-4.2,4.2}) do
+    local ring=part("Обод двигателя",Vector3.new(0.3,3.1,3.1),home+Vector3.new(side*18,-2,depth),Color3.fromRGB(175,188,203),Enum.Material.Metal,planeModel)
+    ring.Shape,ring.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+    local intake=part("Воздухозаборник двигателя",Vector3.new(0.32,2.35,2.35),home+Vector3.new(side*18,-2,depth+(depth<0 and -0.2 or 0.2)),Color3.fromRGB(32,39,48),nil,planeModel)
+    intake.Shape,intake.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+   end
   end
  else
   for i=1,2 do
@@ -1948,6 +2051,6 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 Players.PlayerRemoving:Connect(function(player) clearParachute(player) flightPilots[player]=nil end)
 
-return {aircraft=aircraft,parachutes=parachutes,pilots=flightPilots,eject=ejectAircraft}
+return {aircraft=aircraft,parachutes=parachutes,pilots=flightPilots,eject=ejectAircraft,staff=airportStaff}
 end
 local airportState=setupAirport()

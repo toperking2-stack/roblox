@@ -337,6 +337,9 @@ local function checkSpawnVehicles()
 end
 checkSpawnVehicles()
 local function checkAirport()
+ assert(#airportState.staff==5,'airport has five staff roles')
+ interact(airportState.staff[1].PrimaryPart,'Поговорить')
+ assert(string.find(player:GetAttribute('WinterMessage'),'Регистратор',1,true),'airport staff provides boarding instructions')
  assert(#airportState.aircraft==2 and #airportState.aircraft[1].seats==2 and #airportState.aircraft[2].seats==6,'small and large aircraft seat counts')
  local plane=airportState.aircraft[1]
  interact(plane.seats[1],'Сесть пилотом')
