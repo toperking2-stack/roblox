@@ -183,6 +183,7 @@ function methods:Raycast(origin,direction,params)
  if params and params.FilterDescendantsInstances and params.FilterDescendantsInstances[1] then
   local first=params.FilterDescendantsInstances[1]
   if string.match(first.Name,'^Олень ') then return nil end
+  if first.Name=='Маленький самолёт' or first.Name=='Большой самолёт' then return defaultRayHit end
   if first.Name=='Снегоход' or first.Name=='Реактивные сани' or first.Name=='Снежный мотоцикл' or first.Name=='Мотоцикл BMW' or first.Name=='Снежная BMW' then return defaultRayHit end
  end
  local hit=nextRayHit nextRayHit=nil return hit or defaultRayHit

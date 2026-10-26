@@ -175,7 +175,7 @@ local beforeWander=deer.model:GetPivot().Position
 advance(0.5)
 assert((deer.model:GetPivot().Position-beforeWander).Magnitude<0.01,'unhitched deer keeps waiting')
 -- Expanded map: connected routes reach far beyond each original meadow.
-assert(named('Снежный остров').Size.X==1100 and named('Снежный остров').Size.Z==900,'expanded island size')
+assert(named('Снежный остров').Size.X==1800 and named('Снежный остров').Size.Z==1400,'expanded island size')
 for _,animal in reindeer do
  local route=planDeerPath(animal.model:GetPivot().Position,deerRandom)
  assert(#route>3 and (route[#route]-animal.model:GetPivot().Position).Magnitude>100,'deer chooses a distant reachable goal')
@@ -336,6 +336,36 @@ local function checkSpawnVehicles()
  jet.driver.Occupant=nil humanoid.Sit=false
 end
 checkSpawnVehicles()
+local function checkAirport()
+ assert(#airportState.aircraft==2 and #airportState.aircraft[1].seats==2 and #airportState.aircraft[2].seats==6,'small and large aircraft seat counts')
+ local plane=airportState.aircraft[1]
+ interact(plane.seats[1],'Сесть пилотом')
+ assert(airportState.pilots[player]==plane and player:GetAttribute('HasParachute'),'pilot boards with parachute')
+ friendRoot.Position=plane.seats[2].Position+Vector3.new(0,3,0)
+ for _,p in plane.seats[2]:GetChildren() do if p:IsA('ProximityPrompt') then p.Triggered:Fire(friend) end end
+ assert(plane.seats[2].Occupant==friendHumanoid,'passenger boards small plane')
+ named('AircraftControl').OnServerEvent:Fire(friend,Vector3.new(1,1,1))
+ assert(plane.throttle==0,'passenger cannot fly plane')
+ local origin=plane.root.Position
+ for _=1,12 do
+  named('AircraftControl').OnServerEvent:Fire(player,Vector3.new(0.3,1,1))
+  advance(0.25)
+ end
+ assert(plane.speed>40 and plane.root.Position.Y>20 and (plane.root.Position-origin).Magnitude>30,'pilot accelerates, turns and climbs')
+ named('AircraftAction').OnServerEvent:Fire(friend,'jump')
+ assert(airportState.parachutes[friend] and airportState.parachutes[friend].force.Velocity.Y==-13,'passenger ejects with open parachute')
+ plane.seats[2].Occupant=nil friendHumanoid.Sit=false
+ nextRayHit={Instance=named('Снежный остров'),Position=friendRoot.Position-Vector3.new(0,3,0),Normal=Vector3.new(0,1,0)}
+ advance(0.1)
+ assert(not airportState.parachutes[friend] and friendHumanoid.WalkSpeed==16,'parachute landing removes force and restores walking')
+ named('AircraftAction').OnServerEvent:Fire(player,'jump')
+ assert(airportState.parachutes[player] and not airportState.pilots[player],'pilot can eject too')
+ plane.seats[1].Occupant=nil humanoid.Sit=false
+ nextRayHit={Instance=named('Снежный остров'),Position=root.Position-Vector3.new(0,3,0),Normal=Vector3.new(0,1,0)}
+ advance(0.1)
+ assert(not airportState.parachutes[player],'pilot lands safely')
+end
+checkAirport()
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -462,9 +492,27 @@ assert(spawnVehicles[1].throttle==1,'client keyboard controls spawn vehicle')
 mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.C]=false,false
 spawnVehicles[1].driver.Occupant=nil humanoid.Sit=false
 assert(not player:GetAttribute('GroundDriving'),'client UI exits vehicle mode')
+interact(named('Возврат: Маленький самолёт'))
+local plane=airportState.aircraft[1]
+interact(plane.seats[1],'Сесть пилотом')
+mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.Up]=true,true
+services.RunService.Heartbeat:Fire(0.15)
+assert(plane.throttle==1 and plane.climb==1,'client flight keyboard input reaches pilot controller')
+mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.Up]=false,false
+plane.model:PivotTo(CFrame.new(plane.home.X,100,plane.home.Z))
+services.UserInputService.JumpRequest:Fire()
+assert(player:GetAttribute('ParachuteOpen') and airportState.parachutes[player],'client jump opens parachute from airborne plane')
+plane.seats[1].Occupant=nil humanoid.Sit=false
+mockKeys[Enum.KeyCode.D]=true
+services.RunService.Heartbeat:Fire(0.15)
+assert(airportState.parachutes[player].input.X>0,'parachute steering reaches server')
+mockKeys[Enum.KeyCode.D]=false
+nextRayHit={Instance=named('Снежный остров'),Position=root.Position-Vector3.new(0,3,0),Normal=Vector3.new(0,1,0)}
+advance(0.1)
+assert(not player:GetAttribute('ParachuteOpen') and not root:FindFirstChild('Плавное снижение'),'landing clears parachute and flight force')
 return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\nlocal function runClient()\n'+client+'\nend\nrunClient()\nlocal function runClientChecks()\n'+clientChecks+'\nend\nreturn runClientChecks()';
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit, snow lounges, summit lift, two-person sled descent, repeated dismount, connected Father Frost and two-seat spawn vehicle controls.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit, snow lounges, summit lift, two-person sled descent, repeated dismount, spawn vehicles, airport takeoff, pilot/passenger ejection, parachute steering and landing cleanup.');
 } finally { state.destroy(); }

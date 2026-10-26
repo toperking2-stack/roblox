@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v7 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v8 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -429,3 +429,86 @@ RunService.Heartbeat:Connect(function(dt)
  local boost=(spawnBoost or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)) and 1 or 0
  ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost),driftTouch or UserInputService:IsKeyDown(Enum.KeyCode.C))
 end)
+
+local function setupFlightControls()
+ local touchTurn,touchThrottle,touchClimb=0,0,0
+ local buttons={}
+ local flightHUD=Instance.new("TextLabel")
+ flightHUD.Size,flightHUD.Position=UDim2.fromOffset(360,86),UDim2.fromOffset(16,110)
+ flightHUD.BackgroundColor3,flightHUD.BackgroundTransparency=Color3.fromRGB(27,52,73),0.15
+ flightHUD.TextColor3,flightHUD.Font,flightHUD.TextSize=Color3.fromRGB(255,241,219),Enum.Font.GothamBold,14
+ flightHUD.TextWrapped,flightHUD.Visible,flightHUD.Parent=true,false,gui
+ local jumpButton=Instance.new("TextButton")
+ jumpButton.Size,jumpButton.Position=UDim2.fromOffset(175,40),UDim2.new(1,-190,0,148)
+ jumpButton.Text,jumpButton.TextSize,jumpButton.Visible="Парашют • R",15,false
+ jumpButton.BackgroundColor3,jumpButton.TextColor3=Color3.fromRGB(91,70,110),Color3.fromRGB(255,241,219)
+ jumpButton.Parent=gui
+ local function jump() ReplicatedStorage:WaitForChild("AircraftAction"):FireServer("jump") end
+ jumpButton.Activated:Connect(jump)
+ for i,entry in {{"◀",-1,0,0},{"▶",1,0,0},{"Газ",0,1,0},{"Тормоз",0,-1,0},{"Выше",0,0,1},{"Ниже",0,0,-1}} do
+  local button=Instance.new("TextButton")
+  button.Size,button.Position=UDim2.fromOffset(58,44),UDim2.new(1,-375+(i-1)*61,1,-205)
+  button.Text,button.TextSize,button.Visible=entry[1],13,false
+  button.BackgroundColor3,button.TextColor3=Color3.fromRGB(42,75,104),Color3.fromRGB(255,241,219)
+  button.Parent=gui
+  button.MouseButton1Down:Connect(function()
+   if entry[2]~=0 then touchTurn=entry[2] elseif entry[3]~=0 then touchThrottle=entry[3] else touchClimb=entry[4] end
+  end)
+  button.MouseButton1Up:Connect(function()
+   if entry[2]~=0 then touchTurn=0 elseif entry[3]~=0 then touchThrottle=0 else touchClimb=0 end
+  end)
+  table.insert(buttons,button)
+ end
+ local function refresh()
+  local pilot=player:GetAttribute("AircraftPilot")~=nil
+  local chute=player:GetAttribute("ParachuteOpen")==true
+  local passenger=player:GetAttribute("AircraftPassenger")~=nil
+  flightHUD.Visible=pilot or passenger or chute
+  jumpButton.Visible=pilot or passenger or player:GetAttribute("HasParachute")==true
+  for i,button in buttons do button.Visible=pilot or (chute and i<=4) end
+  if chute then flightHUD.Text="ПАРАШЮТ\nWASD — направлять • приземление автоматически"
+  elseif pilot then flightHUD.Text="ПИЛОТ • скорость "..tostring(player:GetAttribute("FlightSpeed") or 0).." • высота "..tostring(player:GetAttribute("FlightHeight") or 0).."\nW/S — скорость • A/D — поворот • ↑/↓ — набор/снижение • R — парашют"
+  else flightHUD.Text="ПАССАЖИР\nR или прыжок — покинуть самолёт с парашютом" end
+  if not pilot and not chute then touchTurn,touchThrottle,touchClimb=0,0,0 end
+ end
+ for _,attribute in {"AircraftPilot","AircraftPassenger","ParachuteOpen","HasParachute","FlightSpeed","FlightHeight"} do
+  player:GetAttributeChangedSignal(attribute):Connect(refresh)
+ end
+ UserInputService.InputBegan:Connect(function(input,processed)
+  if not processed and input.KeyCode==Enum.KeyCode.R then jump() end
+ end)
+ UserInputService.JumpRequest:Connect(function()
+  if player:GetAttribute("AircraftPilot") or player:GetAttribute("AircraftPassenger") then jump() end
+ end)
+ UserInputService.InputEnded:Connect(function(input)
+  if input.UserInputType==Enum.UserInputType.Touch then touchTurn,touchThrottle,touchClimb=0,0,0 end
+ end)
+ local timer=0
+ RunService.Heartbeat:Connect(function(dt)
+  local pilot=player:GetAttribute("AircraftPilot")~=nil
+  local chute=player:GetAttribute("ParachuteOpen")==true
+  if not pilot and not chute then timer=0 return end
+  timer+=dt if timer<0.1 then return end timer=0
+  local x,y,z=touchTurn,touchThrottle,touchClimb
+  if not UserInputService:GetFocusedTextBox() then
+   if UserInputService:IsKeyDown(Enum.KeyCode.A) then x-=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.D) then x+=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.Up) then z+=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.Down) then z-=1 end
+  end
+  x,y,z=math.clamp(x,-1,1),math.clamp(y,-1,1),math.clamp(z,-1,1)
+  if chute then
+   local camera=workspace.CurrentCamera
+   local forward=camera and Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z) or Vector3.new(0,0,-1)
+   if forward.Magnitude<0.01 then forward=Vector3.new(0,0,-1) end forward=forward.Unit
+   local movement=Vector3.new(-forward.Z,0,forward.X)*x+forward*y
+   if movement.Magnitude>1 then movement=movement.Unit end
+   x,y,z=movement.X,movement.Z,0
+  end
+  ReplicatedStorage:WaitForChild("AircraftControl"):FireServer(Vector3.new(x,y,z))
+ end)
+ refresh()
+end
+setupFlightControls()

@@ -152,7 +152,7 @@ local function tree(x,z,height)
   end
  end
 end
-part("Снежный остров",Vector3.new(1100,5,900),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
+part("Снежный остров",Vector3.new(1800,5,1400),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
 part("Дорожка",Vector3.new(12,0.15,145),Vector3.new(0,0.1,0),Color3.fromRGB(186,211,229),Enum.Material.Ice)
 local spawn = Instance.new("SpawnLocation")
 spawn.Name, spawn.Size, spawn.Position = "Добро пожаловать", Vector3.new(8,1,8), Vector3.new(0,0.5,50)
@@ -406,6 +406,7 @@ prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaG
 -- Ground navigation across the expanded park. A cached grid avoids houses, ice,
 -- slopes, trees and drift lounges. Each flood search chooses a reachable distant goal.
 local navigationRects={
+ {-680,0,160,390},
  {390,-35,95,205},{285,-35,13,205},
  {-43,-22,22,22},{58,-40,22,22},{-130,-100,22,22},{-40,125,22,22},
  {-105,75,36,30},{85,50,22,42},{135,-45,22,53},{30,-105,22,45},
@@ -1724,9 +1725,9 @@ RunService.Heartbeat:Connect(function(dt)
   vehicle.model:SetAttribute("Drifting",vehicle.spray.Enabled)
   for _,fire in vehicle.fires do fire.Enabled=vehicle.speed>5 fire.Size=boost and 4 or 2 end
   if vehicle.player then vehicle.player:SetAttribute("GroundSpeed",math.floor(math.abs(vehicle.speed))) end
-  if math.abs(vehicle.root.Position.X)>530 or math.abs(vehicle.root.Position.Z)>430 then
+  if math.abs(vehicle.root.Position.X)>880 or math.abs(vehicle.root.Position.Z)>680 then
    vehicle.speed=0
-   vehicle.model:PivotTo(CFrame.new(math.clamp(vehicle.root.Position.X,-520,520),3,math.clamp(vehicle.root.Position.Z,-420,420)))
+   vehicle.model:PivotTo(CFrame.new(math.clamp(vehicle.root.Position.X,-870,870),3,math.clamp(vehicle.root.Position.Z,-670,670)))
   end
  end
 end)
@@ -1735,3 +1736,218 @@ Players.PlayerRemoving:Connect(function(player)
  if vehicle then vehicle.player=nil vehicle.throttle,vehicle.steer=0,0 end
  groundDrivers[player]=nil
 end)
+
+local function setupAirport()
+-- Airport expansion: two flyable aircraft and automatic parachute ejection.
+local airportCenter=Vector3.new(-650,0,0)
+local runway=part("Взлётная полоса",Vector3.new(130,0.4,700),Vector3.new(-650,0.2,0),Color3.fromRGB(63,76,91),Enum.Material.Asphalt)
+for z=-300,300,35 do
+ part("Разметка полосы",Vector3.new(3,0.06,18),Vector3.new(-650,0.44,z),snow)
+ for _,x in ipairs({-717,-583}) do
+  local lamp=part("Огонь ВПП",Vector3.new(0.6,0.5,0.6),Vector3.new(x,0.7,z),gold,Enum.Material.Neon)
+  light(lamp,gold,7,0.4)
+ end
+end
+part("Аэропорт: пол",Vector3.new(60,1,55),Vector3.new(-800,0.5,230),Color3.fromRGB(117,130,148),Enum.Material.Concrete)
+part("Аэропорт: крыша",Vector3.new(64,1,59),Vector3.new(-800,17,230),snow)
+for _,x in ipairs({-830,-770}) do
+ local wall=part("Стеклянная стена аэропорта",Vector3.new(1,16,55),Vector3.new(x,8.5,230),Color3.fromRGB(149,197,220),Enum.Material.Glass)
+ wall.Transparency=0.3
+end
+part("Задняя стена терминала",Vector3.new(60,16,1),Vector3.new(-800,8.5,202.5),green)
+local airportSign=part("АЭРОПОРТ",Vector3.new(1,3,1),Vector3.new(-800,18,258),green)
+sign(airportSign,"ЗИМНИЙ АЭРОПОРТ\nСамолёты • полёты • парашюты",Vector3.new(0,4,0))
+part("Диспетчерская вышка",Vector3.new(9,36,9),Vector3.new(-780,18,135),Color3.fromRGB(113,129,151),Enum.Material.Concrete)
+local tower=part("Диспетчерская",Vector3.new(22,8,20),Vector3.new(-780,40,135),Color3.fromRGB(141,192,215),Enum.Material.Glass)
+tower.Transparency=0.25
+part("Крыша вышки",Vector3.new(25,1,23),Vector3.new(-780,44.5,135),snow)
+for _,path in {{Vector3.new(60,0.18,145),Vector3.new(60,0.18,350)},{Vector3.new(60,0.18,350),Vector3.new(-760,0.18,350)},{Vector3.new(-760,0.18,350),Vector3.new(-760,0.18,230)}} do
+ local road=part("Дорога в аэропорт",Vector3.new(12,0.25,(path[2]-path[1]).Magnitude),path[1]:Lerp(path[2],0.5),Color3.fromRGB(154,178,201),Enum.Material.Snow)
+ road.CFrame=CFrame.lookAt(road.Position,path[2])
+end
+local airportGuide=part("Указатель в аэропорт",Vector3.new(0.6,4,0.6),Vector3.new(-10,2,55),green)
+sign(airportGuide,"АЭРОПОРТ ←\nДорога через южную часть парка",Vector3.new(0,4,0))
+local aircraft={}
+local flightPilots={}
+local parachutes={}
+local airInput=Instance.new("RemoteEvent") airInput.Name,airInput.Parent="AircraftControl",ReplicatedStorage
+local airAction=Instance.new("RemoteEvent") airAction.Name,airAction.Parent="AircraftAction",ReplicatedStorage
+local function clearParachute(player)
+ local chute=parachutes[player]
+ if not chute then return end
+ parachutes[player]=nil chute.force:Destroy() chute.model:Destroy()
+ player:SetAttribute("ParachuteOpen",false)
+ if chute.humanoid.Parent then chute.humanoid.PlatformStand=false chute.humanoid.WalkSpeed=16 chute.humanoid.AutoRotate=true end
+end
+local function ejectAircraft(player)
+ if parachutes[player] then return end
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not root or not humanoid or humanoid.Health<=0 then return end
+ local plane,seat
+ for _,candidate in aircraft do for _,place in candidate.seats do
+  if place.Occupant==humanoid then plane,seat=candidate,place break end
+ end if plane then break end end
+ if not plane and not player:GetAttribute("HasParachute") then return end
+ if seat then
+  local weld=seat:FindFirstChild("SeatWeld") if weld then weld:Destroy() end
+  humanoid.Sit=false
+  if plane.pilot==player then plane.pilot=nil flightPilots[player]=nil end
+  local exit=plane.root.CFrame*CFrame.new(plane.span/2+7,2,0)
+  character:PivotTo(CFrame.new(math.clamp(exit.Position.X,-870,870),exit.Position.Y,math.clamp(exit.Position.Z,-670,670)))
+ end
+ player:SetAttribute("AircraftPilot",nil) player:SetAttribute("AircraftPassenger",nil)
+ local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude
+ local excluded={character} if plane then table.insert(excluded,plane.model) end
+ params.FilterDescendantsInstances=excluded
+ local ground=workspace:Raycast(root.Position,Vector3.new(0,-1000,0),params)
+ local height=ground and (root.Position-ground.Position).Magnitude or root.Position.Y
+ if height<15 then return end
+ player:SetAttribute("HasParachute",false)
+ local canopy=Instance.new("Model") canopy.Name,canopy.Parent="Парашют",character
+ local dome=round("Купол парашюта",Vector3.new(15,3,9),root.Position+Vector3.new(0,8,0),red,canopy)
+ for _,side in ipairs({-1,1}) do
+  rod("Стропа парашюта",root.Position+Vector3.new(side*1.5,1,0),root.Position+Vector3.new(side*6,7,0),0.04,snow,canopy)
+ end
+ for _,piece in canopy:GetDescendants() do if piece:IsA("BasePart") then
+  piece.Anchored,piece.Massless,piece.CanCollide,piece.CanQuery=false,true,false,false
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=root,piece,piece
+ end end
+ local force=Instance.new("BodyVelocity")
+ force.Name,force.MaxForce,force.P,force.Velocity="Плавное снижение",Vector3.new(100000,100000,100000),6000,Vector3.new(0,-13,0)
+ force.Parent=root
+ parachutes[player]={model=canopy,force=force,root=root,humanoid=humanoid,input=Vector3.zero,started=os.clock()}
+ player:SetAttribute("ParachuteOpen",true)
+ player:SetAttribute("WinterMessage","Парашют открыт • WASD — направлять • посадка автоматическая")
+end
+airAction.OnServerEvent:Connect(function(player,action) if action=="jump" then ejectAircraft(player) end end)
+airInput.OnServerEvent:Connect(function(player,input)
+ if typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or input.Z~=input.Z or math.abs(input.X)>1 or math.abs(input.Y)>1 or math.abs(input.Z)>1 then return end
+ if parachutes[player] then parachutes[player].input=Vector3.new(input.X,0,input.Y) parachutes[player].untilInput=os.clock()+0.5 return end
+ local plane=flightPilots[player]
+ if not plane or not plane.seats[1].Occupant or plane.seats[1].Occupant.Parent~=player.Character then return end
+ plane.turn,plane.throttle,plane.climb,plane.untilInput=input.X,input.Y,input.Z,os.clock()+0.5
+end)
+for index,name in {"Маленький самолёт","Большой самолёт"} do
+ local large=index==2
+ local home=Vector3.new(large and -618 or -683,large and 6.8 or 4.2,245)
+ local planeModel=Instance.new("Model") planeModel.Name,planeModel.Parent=name,world
+ local root=round("Фюзеляж",Vector3.new(large and 8 or 4,large and 8 or 4,large and 44 or 22),home,large and snow or gold,planeModel)
+ planeModel.PrimaryPart=root
+ local span=large and 78 or 42
+ part("Крылья",Vector3.new(span,0.7,large and 9 or 6),home+Vector3.new(0,-0.2,2),large and Color3.fromRGB(62,112,175) or red,Enum.Material.Metal,planeModel)
+ part("Хвостовые крылья",Vector3.new(span*0.4,0.5,4),home+Vector3.new(0,1,large and 18 or 8),red,nil,planeModel)
+ local fin=part("Киль",Vector3.new(0.7,large and 9 or 5,5),home+Vector3.new(0,large and 5 or 3,large and 18 or 8),green,nil,planeModel)
+ local glass=round("Стекло кабины",Vector3.new(large and 7 or 3.5,large and 5 or 3.6,large and 11 or 7),home+Vector3.new(0,2,large and -14 or -6),Color3.fromRGB(132,191,219),planeModel)
+ glass.Material,glass.Transparency=Enum.Material.Glass,0.35
+ for _,side in ipairs({-1,1}) do
+  local wheel=part("Шасси самолёта",Vector3.new(0.8,large and 2.8 or 1.5,large and 2.8 or 1.5),home+Vector3.new(side*(large and 3 or 1.7),large and -5 or -3,2),Color3.fromRGB(35,41,49),nil,planeModel)
+  wheel.Shape=Enum.PartType.Cylinder
+ end
+ local seats={}
+ for n=1,(large and 6 or 2) do
+  local seat=Instance.new("Seat")
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch,seat.CanCollide=n==1 and "Кресло пилота" or "Кресло пассажира самолёта",Vector3.new(2,0.4,2),true,false,false
+  local x=n==1 and 0 or ((n%2==0 and -1 or 1)*(large and 1.7 or 0))
+  local z=n==1 and (large and -14 or -6) or (large and (-5+math.floor((n-2)/2)*6) or 3)
+  seat.Position,seat.Color,seat.Parent=home+Vector3.new(x,0.3,z),green,planeModel
+  table.insert(seats,seat)
+ end
+ local plane={model=planeModel,root=root,seats=seats,passengers={},home=home,span=span,speed=0,yaw=0,turn=0,throttle=0,climb=0,untilInput=0,maxSpeed=large and 180 or 135,baseHeight=home.Y}
+ plane.propellers={}
+ if large then
+  for _,side in ipairs({-1,1}) do
+   local engine=part("Двигатель большого самолёта",Vector3.new(8,3,3),home+Vector3.new(side*18,-2,0),Color3.fromRGB(120,140,161),Enum.Material.Metal,planeModel)
+   engine.Shape,engine.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+  end
+ else
+  for i=1,2 do
+   local blade=part("Винт самолёта",Vector3.new(0.3,5,0.3),home+Vector3.new(0,0,-11.5),Color3.fromRGB(73,88,107),Enum.Material.Metal,planeModel)
+   blade.CanCollide=false
+   table.insert(plane.propellers,blade)
+  end
+ end
+ table.insert(aircraft,plane)
+ local function boardPlane(player,passenger)
+  if plane.speed>8 then player:SetAttribute("WinterMessage","Дождись остановки самолёта") return end
+  local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or parachutes[player] then return end
+  for n,seat in seats do if (passenger and n>1 or not passenger and n==1) and not seat.Occupant then
+   removeSkates(player)
+   character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid)
+   player:SetAttribute("HasParachute",true)
+   player:SetAttribute(passenger and "AircraftPassenger" or "AircraftPilot",name)
+   if not passenger then plane.pilot=player flightPilots[player]=plane else plane.passengers[player]=seat end
+   player:SetAttribute("WinterMessage","W/S — скорость • A/D — поворот • ↑/↓ — набор/снижение • R — парашют")
+   return
+  end end
+ end
+ for n,place in seats do if n>1 then
+  place:GetPropertyChangedSignal("Occupant"):Connect(function()
+   if place.Occupant then return end
+   for passenger,assigned in plane.passengers do
+    if assigned==place then passenger:SetAttribute("AircraftPassenger",nil) plane.passengers[passenger]=nil end
+   end
+  end)
+ end end
+ prompt(seats[1],"Сесть пилотом",function(player) boardPlane(player,false) end)
+ prompt(seats[2],"Сесть пассажиром",function(player) boardPlane(player,true) end,"F")
+ sign(root,name.." • "..#seats.." мест\nW + ↑ — взлететь • R — парашют",Vector3.new(0,8,0))
+ local recall=part("Возврат: "..name,Vector3.new(2,3,2),home+Vector3.new(-8,0,-15),green)
+ prompt(recall,"Вернуть пустой самолёт",function(player)
+  if sledOccupied(planeModel) then player:SetAttribute("WinterMessage","В самолёте есть люди") return end
+  plane.pilot=nil plane.speed=0 plane.yaw=0 planeModel:PivotTo(CFrame.new(home))
+ end)
+end
+RunService.Heartbeat:Connect(function(dt)
+ dt=math.min(dt,0.1)
+ for _,plane in aircraft do
+  local turn,throttle,climb=0,0,0
+  local pilot=plane.pilot
+  local humanoid=pilot and pilot.Character and pilot.Character:FindFirstChildOfClass("Humanoid")
+  if pilot and (not humanoid or humanoid.Health<=0 or plane.seats[1].Occupant~=humanoid or not humanoid.Sit) then
+   flightPilots[pilot]=nil pilot:SetAttribute("AircraftPilot",nil) plane.pilot=nil pilot=nil
+  end
+  if pilot and os.clock()<plane.untilInput then turn,throttle,climb=plane.turn,plane.throttle,plane.climb end
+  plane.speed=math.clamp(plane.speed+(throttle>0 and 35 or (throttle<0 and -55 or (pilot and -0.5 or -10)))*dt,0,plane.maxSpeed)
+  plane.yaw-=turn*0.8*dt*math.min(plane.speed/40,1)
+  local forward=Vector3.new(-math.sin(plane.yaw),0,-math.cos(plane.yaw))
+  local position=plane.root.Position+forward*plane.speed*dt
+  local vertical=plane.speed>40 and climb*48 or (plane.root.Position.Y>plane.baseHeight+2 and -9 or 0)
+  if not pilot then vertical=-8 end
+  position=Vector3.new(math.clamp(position.X,-850,850),math.clamp(position.Y+vertical*dt,plane.baseHeight,450),math.clamp(position.Z,-650,650))
+  local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude
+  local excluded={plane.model}
+  for _,seat in plane.seats do if seat.Occupant then table.insert(excluded,seat.Occupant.Parent) end end
+  params.FilterDescendantsInstances=excluded
+  local ground=workspace:Raycast(position+Vector3.new(0,500,0),Vector3.new(0,-1000,0),params)
+  if ground then position=Vector3.new(position.X,math.max(position.Y,ground.Position.Y+plane.baseHeight),position.Z) end
+  local pitch=plane.speed>40 and climb*0.2 or 0
+  plane.model:PivotTo(CFrame.lookAt(position,position+forward+Vector3.new(0,pitch,0))*CFrame.Angles(0,0,-turn*0.2))
+  for i,blade in plane.propellers do blade.CFrame=plane.root.CFrame*CFrame.new(0,0,-11.5)*CFrame.Angles(0,0,os.clock()*math.max(plane.speed,2)*0.2+(i-1)*math.pi/2) end
+  if pilot then pilot:SetAttribute("FlightSpeed",math.floor(plane.speed)) pilot:SetAttribute("FlightHeight",math.floor(position.Y)) end
+ end
+ for player,chute in parachutes do
+  if not player.Character or chute.humanoid.Parent~=player.Character or chute.humanoid.Health<=0 or os.clock()-chute.started>180 then clearParachute(player)
+  else
+   if math.abs(chute.root.Position.X)>880 or math.abs(chute.root.Position.Z)>680 then
+    player.Character:PivotTo(CFrame.new(math.clamp(chute.root.Position.X,-870,870),chute.root.Position.Y,math.clamp(chute.root.Position.Z,-670,670)))
+   end
+   local input=(chute.untilInput or 0)>os.clock() and chute.input or Vector3.zero
+   chute.force.Velocity=input*18+Vector3.new(0,-13,0)
+   local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude params.FilterDescendantsInstances={player.Character}
+   local ground=workspace:Raycast(chute.root.Position,Vector3.new(0,-5,0),params)
+   if ground then
+    clearParachute(player) chute.root.AssemblyLinearVelocity=Vector3.zero
+    chute.humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    player:SetAttribute("WinterMessage","Мягкая посадка! Парашют сложен")
+   end
+  end
+ end
+end)
+Players.PlayerRemoving:Connect(function(player) clearParachute(player) flightPilots[player]=nil end)
+
+return {aircraft=aircraft,parachutes=parachutes,pilots=flightPilots,eject=ejectAircraft}
+end
+local airportState=setupAirport()
