@@ -248,6 +248,18 @@ for _,p in sledRental:GetChildren() do if p.ClassName=='ProximityPrompt' and p.A
 local alpineSled=mountainVehicles[1]
 assert(alpineSled.seats[1].Occupant==humanoid and alpineSled.seats[2].Occupant==friendHumanoid,'two friends share mountain sled')
 interact(alpineSled.model.PrimaryPart,'Начать спуск • F')
+local inputControl=assert(mountainControls[player])
+local initialSpeed=inputControl.speed
+local originalX=alpineSled.model.PrimaryPart.Position.X
+named('MountainControl').OnServerEvent:Fire(friend,Vector3.new(-1,-1,0))
+assert(inputControl.steer==0,'passenger cannot override driver')
+named('MountainControl').OnServerEvent:Fire(player,Vector3.new(1,1,0))
+advance(0.3)
+assert(inputControl.speed>initialSpeed and alpineSled.model.PrimaryPart.Position.X>originalX,'driver accelerates and steers')
+local faster=inputControl.speed
+named('MountainControl').OnServerEvent:Fire(player,Vector3.new(-1,-1,0))
+advance(0.3)
+assert(inputControl.speed<faster,'driver brakes')
 advance(11)
 assert(not alpineSled.model.PrimaryPart.Anchored and alpineSled.model.PrimaryPart.AssemblyLinearVelocity.Z==42,'mountain descent transitions to coasting')
 assert(alpineSled.seats[1].Occupant==humanoid and alpineSled.seats[2].Occupant==friendHumanoid,'both friends remain seated through descent')
@@ -376,6 +388,11 @@ end
 assert(not player:GetAttribute('SkatesEquipped') and humanoid.WalkSpeed==16,'emergency skate removal restores walking anywhere')
 interact(named('Прокат: Сноуборд'))
 assert(mountainRiders[player],'snowboard equipped')
+interact(mountainVehicles[4].model.PrimaryPart,'Начать спуск • F')
+mockKeys[Enum.KeyCode.D],mockKeys[Enum.KeyCode.W]=true,true
+services.RunService.Heartbeat:Fire(0.15)
+assert(mountainControls[player].steer==1 and mountainControls[player].throttle==1,'keyboard forwards alpine steering and speed input')
+mockKeys[Enum.KeyCode.D],mockKeys[Enum.KeyCode.W]=false,false
 services.UserInputService.JumpRequest:Fire()
 assert(not mountainRiders[player] and not humanoid.PlatformStand,'jump request exits snowboard and restores control')
 return true

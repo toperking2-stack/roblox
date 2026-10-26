@@ -360,3 +360,47 @@ dismount.BackgroundColor3,dismount.TextColor3=Color3.fromRGB(72,85,103),Color3.f
 dismount.Visible,dismount.Parent=false,gui
 dismount.Activated:Connect(function() ReplicatedStorage:WaitForChild("LeaveMountainRide"):FireServer() end)
 player:GetAttributeChangedSignal("MountainGear"):Connect(function() dismount.Visible=player:GetAttribute("MountainGear")~=nil end)
+
+-- Controls apply only while this player drives equipment on the large mountain.
+local alpineTouchX,alpineTouchY=0,0
+local alpineButtons={}
+for i,entry in {{"◀",-1,0},{"▶",1,0},{"Разгон",0,1},{"Тормоз",0,-1}} do
+ local button=Instance.new("TextButton")
+ button.Size,button.Position=UDim2.fromOffset(66,46),UDim2.new(1,-290+(i-1)*70,1,-155)
+ button.Text,button.TextSize,button.Visible=entry[1],14,false
+ button.BackgroundColor3,button.TextColor3=Color3.fromRGB(35,62,80),Color3.fromRGB(255,240,214)
+ button.Parent=gui
+ button.MouseButton1Down:Connect(function() if entry[2]~=0 then alpineTouchX=entry[2] else alpineTouchY=entry[3] end end)
+ button.MouseButton1Up:Connect(function() if entry[2]~=0 then alpineTouchX=0 else alpineTouchY=0 end end)
+ table.insert(alpineButtons,button)
+end
+local alpineSpeed=Instance.new("TextLabel")
+alpineSpeed.Size,alpineSpeed.Position=UDim2.fromOffset(285,38),UDim2.new(1,-300,1,-202)
+alpineSpeed.BackgroundTransparency,alpineSpeed.TextSize,alpineSpeed.TextColor3=0.2,15,Color3.fromRGB(255,240,214)
+alpineSpeed.BackgroundColor3,alpineSpeed.Visible,alpineSpeed.Parent=Color3.fromRGB(35,62,80),false,gui
+local function updateAlpineHUD()
+ local driving=player:GetAttribute("MountainDriving")==true
+ for _,button in alpineButtons do button.Visible=driving end
+ alpineSpeed.Visible=driving
+ alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
+ if not driving then alpineTouchX,alpineTouchY=0,0 end
+end
+player:GetAttributeChangedSignal("MountainDriving"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("MountainSpeed"):Connect(updateAlpineHUD)
+UserInputService.InputEnded:Connect(function(input)
+ if input.UserInputType==Enum.UserInputType.Touch then alpineTouchX,alpineTouchY=0,0 end
+end)
+local alpineInputTime=0
+RunService.Heartbeat:Connect(function(dt)
+ if not player:GetAttribute("MountainDriving") then alpineInputTime=0 return end
+ alpineInputTime+=dt
+ if alpineInputTime<0.1 then return end alpineInputTime=0
+ local x,y=alpineTouchX,alpineTouchY
+ if not UserInputService:GetFocusedTextBox() then
+  if UserInputService:IsKeyDown(Enum.KeyCode.A) then x-=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.D) then x+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
+ end
+ ReplicatedStorage:WaitForChild("MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),0))
+end)

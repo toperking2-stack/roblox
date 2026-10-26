@@ -1407,6 +1407,19 @@ RunService.Heartbeat:Connect(function(dt)
  cableCar:PivotTo(CFrame.new(lowerStation:Lerp(topStation,t)))
 end)
 local mountainRiders={}
+local mountainControls={}
+local mountainControl=Instance.new("RemoteEvent")
+mountainControl.Name,mountainControl.Parent="MountainControl",ReplicatedStorage
+mountainControl.OnServerEvent:Connect(function(player,input)
+ local control=mountainControls[player]
+ if not control or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or math.abs(input.X)>1 or math.abs(input.Y)>1 then return end
+ control.steer,control.throttle,control.inputUntil=input.X,input.Y,os.clock()+0.5
+end)
+local function stopMountainControl(player)
+ mountainControls[player]=nil
+ player:SetAttribute("MountainDriving",false)
+ player:SetAttribute("MountainSpeed",nil)
+end
 local mountainVehicles={}
 local leaveMountain=Instance.new("RemoteEvent")
 leaveMountain.Name,leaveMountain.Parent="LeaveMountainRide",ReplicatedStorage
@@ -1414,6 +1427,7 @@ local function clearMountainRider(player)
  local state=mountainRiders[player]
  if not state then return end
  mountainRiders[player]=nil
+ stopMountainControl(player)
  if state.weld then state.weld:Destroy() end
  if state.onLeave then state.onLeave() end
  local humanoid=state.humanoid
@@ -1483,16 +1497,28 @@ for index,kind in {"Двухместные санки","Ватрушка","Лы�
   if not aboard then return end
   busy=true
   task.spawn(function()
-   local start=os.clock()
-   local duration=index==1 and 10 or (index==2 and 9 or 8)
-   while os.clock()-start<duration do
-    local t=math.clamp((os.clock()-start)/duration,0,1)
-    local progress=t*t
-    local point=Vector3.new(laneX,144-progress*140,-215+progress*360)
-    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(0,-140/360,1)))
-    RunService.Heartbeat:Wait()
+   local control={steer=0,throttle=0,inputUntil=0,speed=62,vehicle=vehicle}
+   mountainControls[player]=control
+   player:SetAttribute("MountainDriving",true)
+   local distance,x=0,laneX
+   while distance<360 do
+    local dt=math.min(RunService.Heartbeat:Wait(),0.1)
+    local active=standingPlayer==player
+    for _,seat in seats do if seat.Occupant==humanoid then active=true end end
+    if not active or humanoid.Health<=0 then stopMountainControl(player) control.steer,control.throttle=0,0 end
+    local steer,throttle=0,0
+    if mountainControls[player] and os.clock()<control.inputUntil then steer,throttle=control.steer,control.throttle end
+    local acceleration=throttle>0 and 38 or (throttle<0 and -90 or 6)
+    control.speed=math.clamp(control.speed+acceleration*dt,0,115)
+    distance=math.min(360,distance+control.speed*dt)
+    x=math.clamp(x+steer*32*math.min(control.speed/30,1)*dt,315,465)
+    local progress=distance/360
+    local point=Vector3.new(x,144-progress*140,-215+distance)
+    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(steer*0.45,-140/360,1)))
+    if mountainControls[player] then player:SetAttribute("MountainSpeed",math.floor(control.speed)) end
    end
-   vehicle:PivotTo(CFrame.lookAt(Vector3.new(laneX,2,149),Vector3.new(laneX,2,170)))
+   stopMountainControl(player)
+   vehicle:PivotTo(CFrame.lookAt(Vector3.new(x,2,149),Vector3.new(x,2,170)))
    for _,p in vehicle:GetDescendants() do if p:IsA("BasePart") and p~=carrier then
     local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=carrier,p,carrier
     p.Anchored=false p.Massless=true
@@ -1518,7 +1544,7 @@ RunService.Heartbeat:Connect(function()
   if not player.Character or state.humanoid.Health<=0 or state.humanoid.Parent~=player.Character then clearMountainRider(player) end
  end
 end)
-Players.PlayerRemoving:Connect(clearMountainRider)
+Players.PlayerRemoving:Connect(function(player) clearMountainRider(player) stopMountainControl(player) end)
 -- Add a friend seat to all earlier sleds, including the reindeer touring sleds.
 for _,sled in world:GetChildren() do
  if sled:IsA("Model") and (sled.Name=="Санки" or sled.Name=="Прогулочные санки") and sled.PrimaryPart then
@@ -1924,6 +1950,50 @@ dismount.BackgroundColor3,dismount.TextColor3=Color3.fromRGB(72,85,103),Color3.f
 dismount.Visible,dismount.Parent=false,gui
 dismount.Activated:Connect(function() ReplicatedStorage:WaitForChild("LeaveMountainRide"):FireServer() end)
 player:GetAttributeChangedSignal("MountainGear"):Connect(function() dismount.Visible=player:GetAttribute("MountainGear")~=nil end)
+
+-- Controls apply only while this player drives equipment on the large mountain.
+local alpineTouchX,alpineTouchY=0,0
+local alpineButtons={}
+for i,entry in {{"◀",-1,0},{"▶",1,0},{"Разгон",0,1},{"Тормоз",0,-1}} do
+ local button=Instance.new("TextButton")
+ button.Size,button.Position=UDim2.fromOffset(66,46),UDim2.new(1,-290+(i-1)*70,1,-155)
+ button.Text,button.TextSize,button.Visible=entry[1],14,false
+ button.BackgroundColor3,button.TextColor3=Color3.fromRGB(35,62,80),Color3.fromRGB(255,240,214)
+ button.Parent=gui
+ button.MouseButton1Down:Connect(function() if entry[2]~=0 then alpineTouchX=entry[2] else alpineTouchY=entry[3] end end)
+ button.MouseButton1Up:Connect(function() if entry[2]~=0 then alpineTouchX=0 else alpineTouchY=0 end end)
+ table.insert(alpineButtons,button)
+end
+local alpineSpeed=Instance.new("TextLabel")
+alpineSpeed.Size,alpineSpeed.Position=UDim2.fromOffset(285,38),UDim2.new(1,-300,1,-202)
+alpineSpeed.BackgroundTransparency,alpineSpeed.TextSize,alpineSpeed.TextColor3=0.2,15,Color3.fromRGB(255,240,214)
+alpineSpeed.BackgroundColor3,alpineSpeed.Visible,alpineSpeed.Parent=Color3.fromRGB(35,62,80),false,gui
+local function updateAlpineHUD()
+ local driving=player:GetAttribute("MountainDriving")==true
+ for _,button in alpineButtons do button.Visible=driving end
+ alpineSpeed.Visible=driving
+ alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
+ if not driving then alpineTouchX,alpineTouchY=0,0 end
+end
+player:GetAttributeChangedSignal("MountainDriving"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("MountainSpeed"):Connect(updateAlpineHUD)
+UserInputService.InputEnded:Connect(function(input)
+ if input.UserInputType==Enum.UserInputType.Touch then alpineTouchX,alpineTouchY=0,0 end
+end)
+local alpineInputTime=0
+RunService.Heartbeat:Connect(function(dt)
+ if not player:GetAttribute("MountainDriving") then alpineInputTime=0 return end
+ alpineInputTime+=dt
+ if alpineInputTime<0.1 then return end alpineInputTime=0
+ local x,y=alpineTouchX,alpineTouchY
+ if not UserInputService:GetFocusedTextBox() then
+  if UserInputService:IsKeyDown(Enum.KeyCode.A) then x-=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.D) then x+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
+ end
+ ReplicatedStorage:WaitForChild("MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),0))
+end)
 ]]></string>
         </Properties>
       </Item>

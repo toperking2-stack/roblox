@@ -1379,6 +1379,19 @@ RunService.Heartbeat:Connect(function(dt)
  cableCar:PivotTo(CFrame.new(lowerStation:Lerp(topStation,t)))
 end)
 local mountainRiders={}
+local mountainControls={}
+local mountainControl=Instance.new("RemoteEvent")
+mountainControl.Name,mountainControl.Parent="MountainControl",ReplicatedStorage
+mountainControl.OnServerEvent:Connect(function(player,input)
+ local control=mountainControls[player]
+ if not control or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or math.abs(input.X)>1 or math.abs(input.Y)>1 then return end
+ control.steer,control.throttle,control.inputUntil=input.X,input.Y,os.clock()+0.5
+end)
+local function stopMountainControl(player)
+ mountainControls[player]=nil
+ player:SetAttribute("MountainDriving",false)
+ player:SetAttribute("MountainSpeed",nil)
+end
 local mountainVehicles={}
 local leaveMountain=Instance.new("RemoteEvent")
 leaveMountain.Name,leaveMountain.Parent="LeaveMountainRide",ReplicatedStorage
@@ -1386,6 +1399,7 @@ local function clearMountainRider(player)
  local state=mountainRiders[player]
  if not state then return end
  mountainRiders[player]=nil
+ stopMountainControl(player)
  if state.weld then state.weld:Destroy() end
  if state.onLeave then state.onLeave() end
  local humanoid=state.humanoid
@@ -1455,16 +1469,28 @@ for index,kind in {"Двухместные санки","Ватрушка","Лы�
   if not aboard then return end
   busy=true
   task.spawn(function()
-   local start=os.clock()
-   local duration=index==1 and 10 or (index==2 and 9 or 8)
-   while os.clock()-start<duration do
-    local t=math.clamp((os.clock()-start)/duration,0,1)
-    local progress=t*t
-    local point=Vector3.new(laneX,144-progress*140,-215+progress*360)
-    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(0,-140/360,1)))
-    RunService.Heartbeat:Wait()
+   local control={steer=0,throttle=0,inputUntil=0,speed=62,vehicle=vehicle}
+   mountainControls[player]=control
+   player:SetAttribute("MountainDriving",true)
+   local distance,x=0,laneX
+   while distance<360 do
+    local dt=math.min(RunService.Heartbeat:Wait(),0.1)
+    local active=standingPlayer==player
+    for _,seat in seats do if seat.Occupant==humanoid then active=true end end
+    if not active or humanoid.Health<=0 then stopMountainControl(player) control.steer,control.throttle=0,0 end
+    local steer,throttle=0,0
+    if mountainControls[player] and os.clock()<control.inputUntil then steer,throttle=control.steer,control.throttle end
+    local acceleration=throttle>0 and 38 or (throttle<0 and -90 or 6)
+    control.speed=math.clamp(control.speed+acceleration*dt,0,115)
+    distance=math.min(360,distance+control.speed*dt)
+    x=math.clamp(x+steer*32*math.min(control.speed/30,1)*dt,315,465)
+    local progress=distance/360
+    local point=Vector3.new(x,144-progress*140,-215+distance)
+    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(steer*0.45,-140/360,1)))
+    if mountainControls[player] then player:SetAttribute("MountainSpeed",math.floor(control.speed)) end
    end
-   vehicle:PivotTo(CFrame.lookAt(Vector3.new(laneX,2,149),Vector3.new(laneX,2,170)))
+   stopMountainControl(player)
+   vehicle:PivotTo(CFrame.lookAt(Vector3.new(x,2,149),Vector3.new(x,2,170)))
    for _,p in vehicle:GetDescendants() do if p:IsA("BasePart") and p~=carrier then
     local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=carrier,p,carrier
     p.Anchored=false p.Massless=true
@@ -1490,7 +1516,7 @@ RunService.Heartbeat:Connect(function()
   if not player.Character or state.humanoid.Health<=0 or state.humanoid.Parent~=player.Character then clearMountainRider(player) end
  end
 end)
-Players.PlayerRemoving:Connect(clearMountainRider)
+Players.PlayerRemoving:Connect(function(player) clearMountainRider(player) stopMountainControl(player) end)
 -- Add a friend seat to all earlier sleds, including the reindeer touring sleds.
 for _,sled in world:GetChildren() do
  if sled:IsA("Model") and (sled.Name=="Санки" or sled.Name=="Прогулочные санки") and sled.PrimaryPart then
