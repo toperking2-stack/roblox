@@ -363,7 +363,7 @@ for _,path in paths do
 end
 local forestRandom=Random.new(479)
 local clearings={
- {-15,70,12,12},{15,70,12,12},
+ {-34,85,12,12},{-17,85,12,12},{0,85,12,12},{17,85,12,12},{34,85,12,12},
  {-250,210,24,24},{245,215,24,24},{250,-210,24,24},{-250,-210,24,24},
  {-155,135,22,22},{150,125,22,22},{155,-140,22,22},{-160,-30,22,22},
  {-43,-22,28,27},{58,-40,28,27},{-130,-100,29,27},{-40,125,28,27},
@@ -1354,6 +1354,8 @@ local alpineSlope=part("Большой снежный склон",Vector3.new(16
 alpineSlope.Orientation=Vector3.new(math.deg(slopeAngle),0,0)
 part("Вершина горы",Vector3.new(175,3,30),Vector3.new(mountain.x,140,mountain.topZ-10),snow,Enum.Material.Snow)
 part("Площадка торможения",Vector3.new(170,0.4,145),Vector3.new(mountain.x,0.2,215),snow,Enum.Material.Snow)
+local mountainApproach=part("Плавный въезд на гору",Vector3.new(170,0.3,math.sqrt(50^2+3.7^2)),Vector3.new(390,2.1,165),snow,Enum.Material.Snow)
+mountainApproach.Orientation=Vector3.new(math.deg(math.atan(3.7/50)),0,0)
 for _,side in ipairs({-1,1}) do
  local rail=part("Ограждение большого склона",Vector3.new(1,3,math.sqrt(140^2+360^2)),alpineSlope.Position+Vector3.new(side*79,3,0),red)
  rail.Orientation=alpineSlope.Orientation
@@ -1422,10 +1424,10 @@ local mountainRiders={}
 local mountainControls={}
 local mountainControl=Instance.new("RemoteEvent")
 mountainControl.Name,mountainControl.Parent="MountainControl",ReplicatedStorage
-mountainControl.OnServerEvent:Connect(function(player,input)
+mountainControl.OnServerEvent:Connect(function(player,input,drift)
  local control=mountainControls[player]
  if not control or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or math.abs(input.X)>1 or math.abs(input.Y)>1 then return end
- control.steer,control.throttle,control.inputUntil=input.X,input.Y,os.clock()+0.5
+ control.steer,control.throttle,control.inputUntil,control.drift=input.X,input.Y,os.clock()+0.5,drift==true
 end)
 local function stopMountainControl(player)
  mountainControls[player]=nil
@@ -1509,7 +1511,7 @@ for index,kind in {"Двухместные санки","Ватрушка","Лы�
   if not aboard then return end
   busy=true
   task.spawn(function()
-   local control={steer=0,throttle=0,inputUntil=0,speed=62,vehicle=vehicle}
+   local control={steer=0,throttle=0,inputUntil=0,speed=62,vehicle=vehicle,lateral=0,drift=false}
    mountainControls[player]=control
    player:SetAttribute("MountainDriving",true)
    local distance,x=0,laneX
@@ -1523,10 +1525,11 @@ for index,kind in {"Двухместные санки","Ватрушка","Лы�
     local acceleration=throttle>0 and 38 or (throttle<0 and -90 or 6)
     control.speed=math.clamp(control.speed+acceleration*dt,0,115)
     distance=math.min(360,distance+control.speed*dt)
-    x=math.clamp(x+steer*32*math.min(control.speed/30,1)*dt,315,465)
+    control.lateral+=(steer*32-control.lateral)*(1-math.exp(-(control.drift and 1.2 or 10)*dt))
+    x=math.clamp(x+control.lateral*math.min(control.speed/30,1)*dt,315,465)
     local progress=distance/360
     local point=Vector3.new(x,144-progress*140,-215+distance)
-    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(steer*0.45,-140/360,1)))
+    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(steer*(control.drift and 0.85 or 0.45),-140/360,1)))
     if mountainControls[player] then player:SetAttribute("MountainSpeed",math.floor(control.speed)) end
    end
    stopMountainControl(player)
@@ -1589,19 +1592,21 @@ sign(mountainGuide,"БОЛЬШАЯ ГОРА →\nФуникулёр справа
 -- Two-seat vehicles at spawn. Server physics keeps steering authority with the driver.
 local spawnVehicles={}
 local groundDrivers={}
+local vehicleDriftParticles={}
 local groundInput=Instance.new("RemoteEvent")
 groundInput.Name,groundInput.Parent="GroundVehicleControl",ReplicatedStorage
-groundInput.OnServerEvent:Connect(function(player,input)
+groundInput.OnServerEvent:Connect(function(player,input,drift)
  local vehicle=groundDrivers[player]
  if not vehicle or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or input.Z~=input.Z
   or math.abs(input.X)>1 or math.abs(input.Y)>1 or math.abs(input.Z)>1 then return end
  if not vehicle.driver.Occupant or vehicle.driver.Occupant.Health<=0 or vehicle.driver.Occupant.Parent~=player.Character then return end
- vehicle.steer,vehicle.throttle,vehicle.boost,vehicle.untilInput=input.X,input.Y,input.Z>0,os.clock()+0.5
+ vehicle.steer,vehicle.throttle,vehicle.boost,vehicle.untilInput,vehicle.drift=input.X,input.Y,input.Z>0,os.clock()+0.5,drift==true
 end)
-for index,name in {"Снегоход","Реактивные сани"} do
- local position=Vector3.new(index==1 and -15 or 15,2,70)
+for index,name in {"Снегоход","Реактивные сани","Снежный мотоцикл","Мотоцикл BMW","Снежная BMW"} do
+ local bike=index==3 or index==4
+ local position=Vector3.new((index-3)*17,2,85)
  local model=Instance.new("Model") model.Name,model.Parent=name,world
- local root=part("Шасси",Vector3.new(4.6,1,8),position,index==1 and green or red,Enum.Material.Metal,model)
+ local root=part("Шасси",Vector3.new(bike and 1.6 or (index==5 and 5.8 or 4.6),1,8),position,index>=4 and Color3.fromRGB(43,91,151) or (index==1 and green or red),Enum.Material.Metal,model)
  model.PrimaryPart=root
  root.CustomPhysicalProperties=PhysicalProperties.new(1,0.15,0.03)
  local function detail(name,size,offset,color,material)
@@ -1609,19 +1614,19 @@ for index,name in {"Снегоход","Реактивные сани"} do
   p.CanCollide=false
   return p
  end
- for _,side in ipairs({-1,1}) do
+ for _,side in ipairs(bike and {} or {-1,1}) do
   local runner=detail("Лыжа шасси",Vector3.new(0.65,0.4,7.5),Vector3.new(side*2,-1.1,0),Color3.fromRGB(117,149,172),Enum.Material.Metal)
   runner.CanCollide=true runner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.03)
   detail("Крепление лыжи",Vector3.new(0.4,1,2),Vector3.new(side*2,-0.5,0),gold,Enum.Material.Metal)
  end
- local hood=detail("Обтекаемый капот",Vector3.new(4.4,1.6,3.4),Vector3.new(0,0.7,-2.5),index==1 and green or red)
+ local hood=detail("Обтекаемый капот",Vector3.new(bike and 1.5 or 4.4,1.6,3.4),Vector3.new(0,0.7,-2.5),index==1 and green or red)
  hood.Shape=Enum.PartType.Ball
- local lightPanel=detail("Фара",Vector3.new(2,0.4,0.2),Vector3.new(0,0.7,-4.05),gold,Enum.Material.Neon)
+ local lightPanel=detail("Фара",Vector3.new(2,0.4,0.2),Vector3.new(0,0.7,-4.28),gold,Enum.Material.Neon)
  local headlight=Instance.new("SpotLight") headlight.Face,headlight.Range,headlight.Brightness,headlight.Parent=Enum.NormalId.Front,35,2,lightPanel
  local driver,passenger=Instance.new("Seat"),Instance.new("Seat")
  for seatIndex,seat in {driver,passenger} do
-  seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место "..(seatIndex==1 and "водителя" or "пассажира"),Vector3.new(2.3,0.4,2.4),true,false
-  seat.Position,seat.Color,seat.Parent=position+Vector3.new(index==1 and 0 or (seatIndex==1 and -1.2 or 1.2),1.1,index==1 and (seatIndex==1 and -0.4 or 2) or 0.5),Color3.fromRGB(48,47,58),model
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место "..(seatIndex==1 and "водителя" or "пассажира"),Vector3.new(bike and 1.2 or 2.3,0.4,2.4),true,false
+  seat.Position,seat.Color,seat.Parent=position+Vector3.new((index==1 or bike) and 0 or (seatIndex==1 and -1.2 or 1.2),1.1,(index==1 or bike) and (seatIndex==1 and -0.4 or 2) or 0.5),Color3.fromRGB(48,47,58),model
  end
  detail("Руль",Vector3.new(2.4,0.2,0.2),driver.Position-position+Vector3.new(0,1,-1.4),gold,Enum.Material.Metal)
  local jetFires={}
@@ -1633,9 +1638,45 @@ for index,name in {"Снегоход","Реактивные сани"} do
    fire.Size,fire.Heat,fire.Color,fire.SecondaryColor,fire.Enabled,fire.Parent=2,2,Color3.fromRGB(255,142,52),gold,false,nozzle
    table.insert(jetFires,fire)
   end
- else
+ elseif index==1 then
   detail("Гусеница",Vector3.new(2.8,0.7,4),Vector3.new(0,-0.9,1.4),Color3.fromRGB(37,42,48),Enum.Material.SmoothPlastic)
  end
+ if bike then
+  if index==3 then
+   local ski=detail("Передняя снежная лыжа",Vector3.new(1.1,0.35,4),Vector3.new(0,-1,-2.5),gold,Enum.Material.Metal)
+   ski.CanCollide=true
+   local rearTrack=detail("Задняя гусеница мотоцикла",Vector3.new(1.4,0.9,3.5),Vector3.new(0,-0.7,2),Color3.fromRGB(31,34,40))
+   rearTrack.CanCollide=true
+  else
+   for _,z in ipairs({-2.7,2.6}) do
+    local wheel=detail("Колесо BMW",Vector3.new(0.8,2.2,2.2),Vector3.new(0,-0.5,z),Color3.fromRGB(27,31,38))
+    wheel.Shape,wheel.CanCollide=Enum.PartType.Cylinder,true
+    local hub=detail("Диск колеса",Vector3.new(0.85,1.25,1.25),Vector3.new(0,-0.5,z),Color3.fromRGB(170,182,197),Enum.Material.Metal)
+    hub.Shape=Enum.PartType.Cylinder
+   end
+  end
+  for _,z in ipairs({-2.7,2.6}) do
+   detail("Вилка мотоцикла",Vector3.new(0.3,1.8,0.3),Vector3.new(0,0,z),gold,Enum.Material.Metal)
+  end
+  detail("Бак мотоцикла",Vector3.new(1.8,1,2.2),Vector3.new(0,1.1,-1.2),Color3.fromRGB(43,91,151))
+ elseif index==5 then
+  detail("Кузов снежной BMW",Vector3.new(5.8,1.5,7),Vector3.new(0,0.65,0),Color3.fromRGB(225,235,245))
+  local roof=detail("Крыша BMW",Vector3.new(5.2,0.35,4),Vector3.new(0,4.7,0.5),Color3.fromRGB(36,63,102))
+  for _,side in ipairs({-1,1}) do
+   for _,z in ipairs({-1.5,2.5}) do detail("Стойка крыши",Vector3.new(0.2,3.5,0.2),Vector3.new(side*2.5,2.9,z),Color3.fromRGB(36,63,102)) end
+   local grille=detail("Двойная решётка BMW",Vector3.new(1.2,0.7,0.2),Vector3.new(side*0.75,0.7,-4.3),Color3.fromRGB(26,32,42))
+  end
+ end
+ if index>=4 then
+  local badge=detail("Эмблема BMW",Vector3.new(0.4,0.4,0.05),Vector3.new(0,1.5,-4.3),Color3.fromRGB(70,136,218))
+  local tag=Instance.new("SurfaceGui") tag.Face,tag.CanvasSize,tag.Parent=Enum.NormalId.Front,Vector2.new(128,64),badge
+  local text=Instance.new("TextLabel") text.Size,text.BackgroundTransparency,text.Text,text.TextSize=UDim2.fromScale(1,1),1,"BMW",42
+  text.TextColor3,text.Parent=snow,tag
+ end
+ local spray=Instance.new("ParticleEmitter")
+ spray.Name,spray.Texture,spray.Enabled="Снег дрифта","rbxasset://textures/particles/sparkles_main.dds",false
+ spray.Rate,spray.Speed,spray.Lifetime,spray.Size=35,NumberRange.new(3,8),NumberRange.new(0.2,0.6),NumberSequence.new(0.15)
+ spray.Parent=root
  for _,p in model:GetDescendants() do if p:IsA("BasePart") and p~=root then
   p.Anchored,p.Massless=false,true
   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=root,p,p
@@ -1647,7 +1688,7 @@ for index,name in {"Снегоход","Реактивные сани"} do
  local drive=Instance.new("BodyVelocity")
  drive.Name,drive.P,drive.MaxForce,drive.Velocity="Привод транспорта",10000,Vector3.zero,Vector3.zero
  drive.Parent=root
- local vehicle={model=model,root=root,driver=driver,passenger=passenger,drive=drive,speed=0,yaw=0,steer=0,throttle=0,boost=false,untilInput=0,fires=jetFires,maxSpeed=index==1 and 55 or 90}
+ local vehicle={model=model,root=root,driver=driver,passenger=passenger,drive=drive,speed=0,yaw=0,steer=0,throttle=0,boost=false,untilInput=0,fires=jetFires,velocity=Vector3.zero,drift=false,spray=spray,maxSpeed=({55,90,68,78,85})[index]}
  table.insert(spawnVehicles,vehicle)
  local function board(player,seat)
   local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -1685,15 +1726,30 @@ RunService.Heartbeat:Connect(function(dt)
   local steer,throttle,boost=0,0,false
   if vehicle.player and os.clock()<vehicle.untilInput then steer,throttle,boost=vehicle.steer,vehicle.throttle,vehicle.boost end
   if throttle~=0 then vehicle.speed=vehicle.speed+throttle*36*dt
-  else vehicle.speed=vehicle.speed*math.exp(-2*dt) end
+  else vehicle.speed=vehicle.speed*math.exp(-(vehicle.drift and 0.45 or 2)*dt) end
   vehicle.speed=math.clamp(vehicle.speed,-16,boost and vehicle.maxSpeed==90 and 125 or vehicle.maxSpeed)
-  vehicle.yaw-=steer*1.7*dt*math.min(math.abs(vehicle.speed)/12,1)*(vehicle.speed>=0 and 1 or -1)
+  local drifting=vehicle.drift and vehicle.player~=nil and os.clock()<vehicle.untilInput and math.abs(vehicle.speed)>8
+  vehicle.yaw-=steer*(drifting and 2.6 or 1.7)*dt*math.min(math.abs(vehicle.speed)/12,1)*(vehicle.speed>=0 and 1 or -1)
   local direction=Vector3.new(-math.sin(vehicle.yaw),0,-math.cos(vehicle.yaw))
   local powered=vehicle.player and vehicle.driver.Occupant and vehicle.driver.Occupant.Health>0
   local force=powered and math.max(50000,vehicle.root.AssemblyMass*400) or 0
   vehicle.drive.MaxForce=Vector3.new(force,0,force)
-  vehicle.drive.Velocity=direction*vehicle.speed
-  vehicle.root:FindFirstChild("Стабилизация транспорта").CFrame=CFrame.Angles(0,vehicle.yaw,0)
+  local desired=direction*vehicle.speed
+  vehicle.velocity=vehicle.velocity:Lerp(desired,1-math.exp(-(drifting and 1.35 or 12)*dt))
+  local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude
+  local excluded={vehicle.model}
+  if vehicle.player and vehicle.player.Character then table.insert(excluded,vehicle.player.Character) end
+  if vehicle.passenger.Occupant then table.insert(excluded,vehicle.passenger.Occupant.Parent) end
+  params.FilterDescendantsInstances=excluded
+  local ground=workspace:Raycast(vehicle.root.Position+Vector3.new(0,3,0),Vector3.new(0,-12,0),params)
+  local ahead=workspace:Raycast(vehicle.root.Position+direction*3.5+Vector3.new(0,4,0),Vector3.new(0,-14,0),params)
+  local normal=(ahead and ahead.Normal) or (ground and ground.Normal) or Vector3.new(0,1,0)
+  local tangent=direction-normal*direction:Dot(normal)
+  if tangent.Magnitude<0.01 then tangent=direction end
+  vehicle.drive.Velocity=vehicle.velocity
+  vehicle.root:FindFirstChild("Стабилизация транспорта").CFrame=CFrame.lookAt(Vector3.zero,tangent,normal)
+  vehicle.spray.Enabled=drifting and math.abs(steer)>0.1
+  vehicle.model:SetAttribute("Drifting",vehicle.spray.Enabled)
   for _,fire in vehicle.fires do fire.Enabled=vehicle.speed>5 fire.Size=boost and 4 or 2 end
   if vehicle.player then vehicle.player:SetAttribute("GroundSpeed",math.floor(math.abs(vehicle.speed))) end
   if math.abs(vehicle.root.Position.X)>530 or math.abs(vehicle.root.Position.Z)>430 then
@@ -1748,7 +1804,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v6.1 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v7 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -2103,6 +2159,14 @@ alpineSpeed.Size,alpineSpeed.Position=UDim2.fromOffset(285,38),UDim2.new(1,-300,
 alpineSpeed.BackgroundTransparency,alpineSpeed.TextSize,alpineSpeed.TextColor3=0.2,15,Color3.fromRGB(255,240,214)
 alpineSpeed.BackgroundColor3,alpineSpeed.Visible,alpineSpeed.Parent=Color3.fromRGB(35,62,80),false,gui
 local spawnBoost=false
+local driftTouch=false
+local driftButton=Instance.new("TextButton")
+driftButton.Size,driftButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,104)
+driftButton.Text,driftButton.TextSize,driftButton.Visible="Дрифт • C",15,false
+driftButton.BackgroundColor3,driftButton.TextColor3=Color3.fromRGB(60,83,118),Color3.fromRGB(255,239,214)
+driftButton.Parent=gui
+driftButton.MouseButton1Down:Connect(function() driftTouch=true end)
+driftButton.MouseButton1Up:Connect(function() driftTouch=false end)
 local boostButton=Instance.new("TextButton")
 boostButton.Size,boostButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,60)
 boostButton.Text,boostButton.TextSize,boostButton.Visible="Форсаж",15,false
@@ -2110,11 +2174,13 @@ boostButton.BackgroundColor3,boostButton.TextColor3=Color3.fromRGB(150,76,45),Co
 boostButton.Parent=gui
 boostButton.MouseButton1Down:Connect(function() spawnBoost=true end)
 boostButton.MouseButton1Up:Connect(function() spawnBoost=false end)
-UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.Touch then spawnBoost=false end end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.Touch then spawnBoost=false driftTouch=false end end)
 local function updateAlpineHUD()
  local driving=player:GetAttribute("MountainDriving")==true or player:GetAttribute("GroundDriving")~=nil
  boostButton.Visible=player:GetAttribute("GroundDriving")=="Реактивные сани"
  if not boostButton.Visible then spawnBoost=false end
+ driftButton.Visible=driving
+ if not driving then driftTouch=false end
  for _,button in alpineButtons do button.Visible=driving end
  alpineSpeed.Visible=driving
  alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("GroundSpeed") or player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
@@ -2141,7 +2207,7 @@ RunService.Heartbeat:Connect(function(dt)
  end
  local ground=player:GetAttribute("GroundDriving")
  local boost=(spawnBoost or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)) and 1 or 0
- ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost))
+ ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost),driftTouch or UserInputService:IsKeyDown(Enum.KeyCode.C))
 end)
 ]]></string>
         </Properties>

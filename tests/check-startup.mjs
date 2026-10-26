@@ -278,7 +278,13 @@ for _,sled in world:GetChildren() do
  end
 end
 local function checkSpawnVehicles()
- assert(#spawnVehicles==2,'two spawn vehicles')
+ assert(#spawnVehicles==5,'five spawn vehicles')
+ assert(spawnVehicles[3].model.Name=='Снежный мотоцикл' and spawnVehicles[4].model.Name=='Мотоцикл BMW' and spawnVehicles[5].model.Name=='Снежная BMW','three requested new vehicles')
+ local angle=math.atan(3.7/50)
+ local lower=mountainApproach.Position.Y-1.85+0.15/math.cos(angle)
+ local upper=mountainApproach.Position.Y+1.85+0.15/math.cos(angle)
+ local slopeAtJoin=70-(140+35)*140/360+2/math.cos(slopeAngle)
+ assert(math.abs(lower-0.4)<0.05 and math.abs(upper-slopeAtJoin)<0.1,'approach meets runout and main slope without a step')
  -- Verify physical connectivity, rather than just a model grouping.
  for _,piece in santaModel:GetDescendants() do
   if piece:IsA('BasePart') and piece~=santa then
@@ -302,6 +308,14 @@ local function checkSpawnVehicles()
  advance(0.3)
  assert(snowmobile.speed>0 and snowmobile.yaw~=0,'snowmobile accelerates and turns')
  assert(snowmobile.drive.MaxForce.X>0 and snowmobile.drive.MaxForce.Y==0 and snowmobile.drive.Velocity.Magnitude>0,'physics drive maintains horizontal traction with driver and passenger')
+ named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(1,1,0),true)
+ advance(0.3)
+ assert(snowmobile.model:GetAttribute('Drifting') and snowmobile.spray.Enabled,'drift creates a snow plume')
+ local forward=Vector3.new(-math.sin(snowmobile.yaw),0,-math.cos(snowmobile.yaw))*snowmobile.speed
+ assert((snowmobile.velocity-forward).Magnitude>0.5,'drift retains lateral momentum instead of snapping to heading')
+ named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0,0,0),false)
+ advance(0.1)
+ assert(not snowmobile.model:GetAttribute('Drifting'),'release of drift restores grip')
  local speed=snowmobile.speed
  named('GroundVehicleControl').OnServerEvent:Fire(player,Vector3.new(0,-1,0))
  advance(0.2)
@@ -441,10 +455,11 @@ mockKeys[Enum.KeyCode.D],mockKeys[Enum.KeyCode.W]=false,false
 services.UserInputService.JumpRequest:Fire()
 assert(not mountainRiders[player] and not humanoid.PlatformStand,'jump request exits snowboard and restores control')
 interact(spawnVehicles[1].driver,'Водитель: сесть')
-mockKeys[Enum.KeyCode.W]=true
+mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.C]=true,true
 services.RunService.Heartbeat:Fire(0.15)
+assert(spawnVehicles[1].drift==true,'client drift key reaches vehicle controller')
 assert(spawnVehicles[1].throttle==1,'client keyboard controls spawn vehicle')
-mockKeys[Enum.KeyCode.W]=false
+mockKeys[Enum.KeyCode.W],mockKeys[Enum.KeyCode.C]=false,false
 spawnVehicles[1].driver.Occupant=nil humanoid.Sit=false
 assert(not player:GetAttribute('GroundDriving'),'client UI exits vehicle mode')
 return true

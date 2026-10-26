@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v6.1 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v7 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -379,6 +379,14 @@ alpineSpeed.Size,alpineSpeed.Position=UDim2.fromOffset(285,38),UDim2.new(1,-300,
 alpineSpeed.BackgroundTransparency,alpineSpeed.TextSize,alpineSpeed.TextColor3=0.2,15,Color3.fromRGB(255,240,214)
 alpineSpeed.BackgroundColor3,alpineSpeed.Visible,alpineSpeed.Parent=Color3.fromRGB(35,62,80),false,gui
 local spawnBoost=false
+local driftTouch=false
+local driftButton=Instance.new("TextButton")
+driftButton.Size,driftButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,104)
+driftButton.Text,driftButton.TextSize,driftButton.Visible="Дрифт • C",15,false
+driftButton.BackgroundColor3,driftButton.TextColor3=Color3.fromRGB(60,83,118),Color3.fromRGB(255,239,214)
+driftButton.Parent=gui
+driftButton.MouseButton1Down:Connect(function() driftTouch=true end)
+driftButton.MouseButton1Up:Connect(function() driftTouch=false end)
 local boostButton=Instance.new("TextButton")
 boostButton.Size,boostButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,60)
 boostButton.Text,boostButton.TextSize,boostButton.Visible="Форсаж",15,false
@@ -386,11 +394,13 @@ boostButton.BackgroundColor3,boostButton.TextColor3=Color3.fromRGB(150,76,45),Co
 boostButton.Parent=gui
 boostButton.MouseButton1Down:Connect(function() spawnBoost=true end)
 boostButton.MouseButton1Up:Connect(function() spawnBoost=false end)
-UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.Touch then spawnBoost=false end end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.Touch then spawnBoost=false driftTouch=false end end)
 local function updateAlpineHUD()
  local driving=player:GetAttribute("MountainDriving")==true or player:GetAttribute("GroundDriving")~=nil
  boostButton.Visible=player:GetAttribute("GroundDriving")=="Реактивные сани"
  if not boostButton.Visible then spawnBoost=false end
+ driftButton.Visible=driving
+ if not driving then driftTouch=false end
  for _,button in alpineButtons do button.Visible=driving end
  alpineSpeed.Visible=driving
  alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("GroundSpeed") or player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
@@ -417,5 +427,5 @@ RunService.Heartbeat:Connect(function(dt)
  end
  local ground=player:GetAttribute("GroundDriving")
  local boost=(spawnBoost or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)) and 1 or 0
- ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost))
+ ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost),driftTouch or UserInputService:IsKeyDown(Enum.KeyCode.C))
 end)

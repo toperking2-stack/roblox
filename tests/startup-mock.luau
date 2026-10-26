@@ -26,6 +26,7 @@ local function signal()
 end
 local vector={}
 vector.__index=function(v,key)
+ if key=='Dot' then return function(a,b) return a.X*b.X+a.Y*b.Y+a.Z*b.Z end end
  if key=='Magnitude' then return math.sqrt(v.X*v.X+v.Y*v.Y+v.Z*v.Z) end
  if key=='Unit' then local m=v.Magnitude return Vector3.new(v.X/m,v.Y/m,v.Z/m) end
  if key=='Lerp' then return function(a,b,t) return a+(b-a)*t end end
@@ -182,6 +183,7 @@ function methods:Raycast(origin,direction,params)
  if params and params.FilterDescendantsInstances and params.FilterDescendantsInstances[1] then
   local first=params.FilterDescendantsInstances[1]
   if string.match(first.Name,'^Олень ') then return nil end
+  if first.Name=='Снегоход' or first.Name=='Реактивные сани' or first.Name=='Снежный мотоцикл' or first.Name=='Мотоцикл BMW' or first.Name=='Снежная BMW' then return defaultRayHit end
  end
  local hit=nextRayHit nextRayHit=nil return hit or defaultRayHit
 end
