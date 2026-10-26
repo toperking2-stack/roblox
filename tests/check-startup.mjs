@@ -175,7 +175,7 @@ local beforeWander=deer.model:GetPivot().Position
 advance(0.5)
 assert((deer.model:GetPivot().Position-beforeWander).Magnitude<0.01,'unhitched deer keeps waiting')
 -- Expanded map: connected routes reach far beyond each original meadow.
-assert(named('Снежный остров').Size.X==640 and named('Снежный остров').Size.Z==580,'expanded island size')
+assert(named('Снежный остров').Size.X==1100 and named('Снежный остров').Size.Z==900,'expanded island size')
 for _,animal in reindeer do
  local route=planDeerPath(animal.model:GetPivot().Position,deerRandom)
  assert(#route>3 and (route[#route]-animal.model:GetPivot().Position).Magnitude>100,'deer chooses a distant reachable goal')
@@ -221,6 +221,50 @@ assert(player:GetAttribute('DeerCarrots')==6 and companion.chewUntil>os.clock(),
 named('CarrotAction').OnServerEvent:Fire(player,'wait')
 assert(not companion.leader and not player:GetAttribute('CompanionDeer'),'wait button releases companion at current place')
 carrotTool.Parent=backpack
+-- Alpine lift: wait for the local cabin, board, and actually travel to the top.
+assert(#cabinSeats==4 and #mountainVehicles==4,'four-person cable car and four rental kinds')
+assert(mountain.height==140,'large mountain elevation')
+cabinTime=0 cableCar:PivotTo(CFrame.new(lowerStation))
+local posts={}
+for _,object in objects do if object.Name=='Посадка на фуникулёр' then table.insert(posts,object) end end
+interact(posts[2])
+assert(not cabinSeats[1].Occupant,'cannot board a cabin waiting at the other station')
+interact(posts[1])
+assert(cabinSeats[1].Occupant==humanoid,'cable car boarding')
+advance(22)
+assert((cabinFloor.Position-topStation).Magnitude<2,'cabin reaches summit')
+cabinSeats[1].Occupant=nil humanoid.Sit=false
+-- Two friends board the same mountain sled before either starts it.
+local friend=Instance.new('Player') friend.Name,friend.Parent='Friend',services.Players
+local friendCharacter=Instance.new('Model') friendCharacter.Parent=workspace
+local friendRoot=Instance.new('Part') friendRoot.Name,friendRoot.Parent='HumanoidRootPart',friendCharacter
+friendCharacter.PrimaryPart=friendRoot
+local friendHumanoid=Instance.new('Humanoid') friendHumanoid.Health,friendHumanoid.Parent=100,friendCharacter
+friend.Character=friendCharacter
+local sledRental=named('Прокат: Двухместные санки')
+interact(sledRental)
+friendRoot.Position=sledRental.Position+Vector3.new(0,3,0)
+for _,p in sledRental:GetChildren() do if p.ClassName=='ProximityPrompt' and p.ActionText=='Взять: Двухместные санки' then p.Triggered:Fire(friend) end end
+local alpineSled=mountainVehicles[1]
+assert(alpineSled.seats[1].Occupant==humanoid and alpineSled.seats[2].Occupant==friendHumanoid,'two friends share mountain sled')
+interact(alpineSled.model.PrimaryPart,'Начать спуск • F')
+advance(11)
+assert(not alpineSled.model.PrimaryPart.Anchored and alpineSled.model.PrimaryPart.AssemblyLinearVelocity.Z==42,'mountain descent transitions to coasting')
+assert(alpineSled.seats[1].Occupant==humanoid and alpineSled.seats[2].Occupant==friendHumanoid,'both friends remain seated through descent')
+alpineSled.seats[1].Occupant=nil alpineSled.seats[2].Occupant=nil humanoid.Sit=false friendHumanoid.Sit=false
+-- Leaving standing equipment before starting must allow the next rental.
+interact(named('Прокат: Лыжи'))
+assert(mountainRiders[player] and humanoid.PlatformStand,'skis attach standing rider')
+named('LeaveMountainRide').OnServerEvent:Fire(player)
+assert(not mountainRiders[player] and not humanoid.PlatformStand and humanoid.WalkSpeed==16,'dismount restores movement')
+interact(named('Прокат: Лыжи'))
+assert(mountainRiders[player],'skis can be rented again after dismount')
+named('LeaveMountainRide').OnServerEvent:Fire(player)
+for _,sled in world:GetChildren() do
+ if sled:IsA('Model') and (sled.Name=='Санки' or sled.Name=='Прогулочные санки') then
+  assert(sled:FindFirstChild('Место друга'),'existing sled has friend seat')
+ end
+end
 return #objects
 `;
 const state=await LuauState.createAsync();
@@ -330,9 +374,13 @@ for _,o in objects do
  if o.ClassName=='TextButton' and o.Text=='Снять коньки • X' then o.Activated:Fire() end
 end
 assert(not player:GetAttribute('SkatesEquipped') and humanoid.WalkSpeed==16,'emergency skate removal restores walking anywhere')
+interact(named('Прокат: Сноуборд'))
+assert(mountainRiders[player],'snowboard equipped')
+services.UserInputService.JumpRequest:Fire()
+assert(not mountainRiders[player] and not humanoid.PlatformStand,'jump request exits snowboard and restores control')
 return true
 `;
- const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\ndo\n'+client+'\nend\n'+clientChecks;
+ const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\nlocal function runClient()\n'+client+'\nend\nrunClient()\nlocal function runClientChecks()\n'+clientChecks+'\nend\nreturn runClientChecks()';
  await state.loadstring(full,'client-server interaction regression',true)();
- console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit and snow-lounge landing/reuse.');
+ console.log('Client/server regression passed: throws, tea, skating acceleration/coasting/exit, dialogue, music mute, four skating equip/exit cycles, legacy freeze recovery, waiting deer, carrot bag/tool feeding, house visit, snow lounges, summit lift, two-person sled descent and repeated ski/snowboard dismount.');
 } finally { state.destroy(); }

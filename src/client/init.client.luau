@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v4 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v5 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -348,3 +348,15 @@ task.spawn(function()
   task.wait(0.3)
  end
 end)
+
+UserInputService.JumpRequest:Connect(function()
+ if player:GetAttribute("MountainGear") then ReplicatedStorage:WaitForChild("LeaveMountainRide"):FireServer() end
+end)
+
+local dismount=Instance.new("TextButton")
+dismount.Size,dismount.Position=UDim2.fromOffset(175,40),UDim2.new(1,-190,1,-300)
+dismount.Text,dismount.TextSize="Сойти со снаряжения",14
+dismount.BackgroundColor3,dismount.TextColor3=Color3.fromRGB(72,85,103),Color3.fromRGB(255,239,214)
+dismount.Visible,dismount.Parent=false,gui
+dismount.Activated:Connect(function() ReplicatedStorage:WaitForChild("LeaveMountainRide"):FireServer() end)
+player:GetAttributeChangedSignal("MountainGear"):Connect(function() dismount.Visible=player:GetAttribute("MountainGear")~=nil end)

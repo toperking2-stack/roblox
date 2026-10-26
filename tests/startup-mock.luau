@@ -60,7 +60,7 @@ local events={}
 local children={}
 local services={}
 local methods={}
-local eventNames={Touched=true,Triggered=true,OnServerEvent=true,PlayerRemoving=true,PlayerAdded=true,Heartbeat=true,PreSimulation=true,ChildAdded=true,CharacterAdded=true,Activated=true,Unequipped=true,InputBegan=true,InputEnded=true,MouseButton1Down=true,MouseButton1Up=true}
+local eventNames={Touched=true,Triggered=true,OnServerEvent=true,PlayerRemoving=true,PlayerAdded=true,Heartbeat=true,PreSimulation=true,ChildAdded=true,CharacterAdded=true,Activated=true,Unequipped=true,InputBegan=true,JumpRequest=true,InputEnded=true,MouseButton1Down=true,MouseButton1Up=true}
 function methods:GetPropertyChangedSignal(name)
  local key='Changed:'..name
  if not events[self][key] then events[self][key]=signal() end

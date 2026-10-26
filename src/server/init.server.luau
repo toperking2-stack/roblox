@@ -152,7 +152,7 @@ local function tree(x,z,height)
   end
  end
 end
-part("Снежный остров",Vector3.new(640,5,580),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
+part("Снежный остров",Vector3.new(1100,5,900),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
 part("Дорожка",Vector3.new(12,0.15,145),Vector3.new(0,0.1,0),Color3.fromRGB(186,211,229),Enum.Material.Ice)
 local spawn = Instance.new("SpawnLocation")
 spawn.Name, spawn.Size, spawn.Position = "Добро пожаловать", Vector3.new(8,1,8), Vector3.new(0,0.5,50)
@@ -394,6 +394,7 @@ prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaG
 -- Ground navigation across the expanded park. A cached grid avoids houses, ice,
 -- slopes, trees and drift lounges. Each flood search chooses a reachable distant goal.
 local navigationRects={
+ {390,-35,95,205},{285,-35,13,205},
  {-43,-22,22,22},{58,-40,22,22},{-130,-100,22,22},{-40,125,22,22},
  {-105,75,36,30},{85,50,22,42},{135,-45,22,53},{30,-105,22,45},
 }
@@ -401,7 +402,7 @@ local navigationGrid
 local function gridKey(x,z) return x..":"..z end
 local function buildNavigationGrid()
  local grid={}
- for x=-18,18 do for z=-16,16 do
+ for x=-32,32 do for z=-25,25 do
   local wx,wz=x*16,z*16
   local blocked=false
   for _,rect in navigationRects do
@@ -710,7 +711,7 @@ RunService.Heartbeat:Connect(function(dt)
    deer.blockedFor=(deer.blockedFor or 0)+0.1
    if deer.leader then deer.forceRouteUntil=os.clock()+4 end
    if deer.blockedFor>1 then deer.path={} deer.pauseUntil=os.clock()+0.3 deer.blockedFor=0 end end
-  local pos=Vector3.new(math.clamp(current.X+movement.X,-302,302),floorHeight,math.clamp(current.Z+movement.Z,-272,272))
+  local pos=Vector3.new(math.clamp(current.X+movement.X,-520,520),floorHeight,math.clamp(current.Z+movement.Z,-420,420))
   if math.abs(pos.X+105)<32 and math.abs(pos.Z-75)<26 then pos=current movement=Vector3.zero end
   local direction=movement.Magnitude>0.01 and movement.Unit or deer.model:GetPivot().LookVector
   local frame=CFrame.lookAt(pos,pos+direction)
@@ -942,6 +943,10 @@ Players.PlayerAdded:Connect(initializePlayer)
 for _,player in Players:GetPlayers() do initializePlayer(player) end
 -- Route rides are server-controlled; seats cannot be flung by network physics.
 local riding={}
+local function sledOccupied(model)
+ for _,p in model:GetDescendants() do if p:IsA("Seat") and p.Occupant then return true end end
+ return false
+end
 local function hill(x,z,height,length,title)
  local width=15
  local angle=math.atan(height/length)
@@ -1035,7 +1040,7 @@ local function hill(x,z,height,length,title)
  -- Explicit retrieval preserves the sled at the runout until requested.
  local returnPost=part("Возврат санок",Vector3.new(2,2,2),start.Position+Vector3.new(5,0,0),green)
  prompt(returnPost,"Вернуть свободные санки наверх",function()
-  if sled:GetAttribute("TowedBy") or not freeSled or seat.Occupant or seat.AssemblyLinearVelocity.Magnitude>1.5 then return end
+  if sled:GetAttribute("TowedBy") or not freeSled or sledOccupied(sled) or seat.AssemblyLinearVelocity.Magnitude>1.5 then return end
   for _,weld in seat:GetChildren() do if weld:IsA("WeldConstraint") then weld:Destroy() end end
   for _,p in sled:GetDescendants() do if p:IsA("BasePart") then p.Anchored=true end end
   sled:PivotTo(home)
@@ -1296,3 +1301,221 @@ Players.PlayerRemoving:Connect(function(player)
  carrotCooldown[player]=nil
 
 end)
+
+-- Alpine expansion: a large continuous slope, four rentals and a working cable car.
+local mountain={x=390,topZ=-215,bottomZ=145,height=140,length=360}
+local slopeAngle=math.atan(mountain.height/mountain.length)
+for i=0,23 do
+ local t=(i+0.5)/24
+ local h=math.max(2,mountain.height*(1-t)-5)
+ part("Скальный массив горы",Vector3.new(160,h,15.1),Vector3.new(mountain.x,h/2,mountain.topZ+t*mountain.length),Color3.fromRGB(149,163,180),Enum.Material.Slate)
+end
+local alpineSlope=part("Большой снежный склон",Vector3.new(160,4,math.sqrt(140^2+360^2)),Vector3.new(mountain.x,70,-35),snow,Enum.Material.Snow)
+alpineSlope.Orientation=Vector3.new(math.deg(slopeAngle),0,0)
+part("Вершина горы",Vector3.new(175,3,30),Vector3.new(mountain.x,140,mountain.topZ-10),snow,Enum.Material.Snow)
+part("Площадка торможения",Vector3.new(170,0.4,145),Vector3.new(mountain.x,0.2,215),snow,Enum.Material.Snow)
+for _,side in ipairs({-1,1}) do
+ local rail=part("Ограждение большого склона",Vector3.new(1,3,math.sqrt(140^2+360^2)),alpineSlope.Position+Vector3.new(side*79,3,0),red)
+ rail.Orientation=alpineSlope.Orientation
+end
+local topStation=Vector3.new(285,142,-225)
+local lowerStation=Vector3.new(285,3,155)
+for _,station in {lowerStation,topStation} do
+ part("Платформа фуникулёра",Vector3.new(24,2,18),station-Vector3.new(0,1.5,0),Color3.fromRGB(102,82,74),Enum.Material.WoodPlanks)
+end
+part("Мост к прокату",Vector3.new(45,2,12),Vector3.new(312,140,-225),snow)
+for i=0,6 do
+ local point=lowerStation:Lerp(topStation,i/6)
+ part("Опора фуникулёра",Vector3.new(1.5,point.Y+10,1.5),Vector3.new(285,(point.Y+10)/2,point.Z),Color3.fromRGB(82,99,115),Enum.Material.Metal)
+end
+rod("Трос фуникулёра",lowerStation+Vector3.new(0,11,0),topStation+Vector3.new(0,11,0),0.15,Color3.fromRGB(54,65,78),world,Enum.Material.Metal)
+local cableCar=Instance.new("Model") cableCar.Name,cableCar.Parent="Фуникулёр",world
+local cabinFloor=part("Кабина фуникулёра",Vector3.new(12,0.8,10),lowerStation,red,nil,cableCar)
+cableCar.PrimaryPart=cabinFloor
+part("Крыша кабины",Vector3.new(12,0.6,10),lowerStation+Vector3.new(0,8,0),red,nil,cableCar)
+rod("Подвес кабины",lowerStation+Vector3.new(0,8,0),lowerStation+Vector3.new(0,11,0),0.2,gold,cableCar,Enum.Material.Metal)
+for _,side in ipairs({-1,1}) do
+ local glass=part("Окно кабины",Vector3.new(0.2,6,9),lowerStation+Vector3.new(side*5.8,4,0),Color3.fromRGB(177,220,237),Enum.Material.Glass,cableCar)
+ glass.Transparency=0.65
+end
+for _,x in ipairs({-5.6,5.6}) do
+ for _,z in ipairs({-4.6,4.6}) do part("Стойка кабины",Vector3.new(0.4,8,0.4),lowerStation+Vector3.new(x,4,z),gold,Enum.Material.Metal,cableCar) end
+end
+local cabinSeats={}
+for _,x in ipairs({-3,3}) do for _,z in ipairs({-2.5,2.5}) do
+ local seat=Instance.new("Seat")
+ seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место в фуникулёре",Vector3.new(2.5,0.4,2.5),true,false
+ seat.Position,seat.Color,seat.Parent=lowerStation+Vector3.new(x,1.1,z),green,cableCar
+ table.insert(cabinSeats,seat)
+end end
+local function boardCabin(player)
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not humanoid or humanoid.Health<=0 or humanoid.Sit then return end
+ local root=character:FindFirstChild("HumanoidRootPart")
+ if not root or (root.Position-cabinFloor.Position).Magnitude>20 then
+  player:SetAttribute("WinterMessage","Дождись кабины на этой платформе") return
+ end
+ if (cabinFloor.Position-lowerStation).Magnitude>9 and (cabinFloor.Position-topStation).Magnitude>9 then
+  player:SetAttribute("WinterMessage","Кабина в пути. Подожди у платформы") return
+ end
+ for _,seat in cabinSeats do if not seat.Occupant then
+  removeSkates(player)
+  character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid)
+  player:SetAttribute("WinterMessage","Фуникулёр • четыре места • дождись остановки на вершине") return
+ end end
+ player:SetAttribute("WinterMessage","Все четыре места заняты. Подожди следующий рейс")
+end
+for index,station in {lowerStation,topStation} do
+ local post=part("Посадка на фуникулёр",Vector3.new(2,3,2),station+Vector3.new(8,1,0),green)
+ sign(post,index==1 and "ФУНИКУЛЁР • E — сесть" or "ФУНИКУЛЁР • спуск в деревню")
+ prompt(post,"Сесть в кабину",boardCabin)
+end
+local cabinTime=0
+RunService.Heartbeat:Connect(function(dt)
+ cabinTime=(cabinTime+dt)%44
+ local t
+ if cabinTime<5 then t=0 elseif cabinTime<22 then t=(cabinTime-5)/17 elseif cabinTime<27 then t=1 else t=1-(cabinTime-27)/17 end
+ cableCar:PivotTo(CFrame.new(lowerStation:Lerp(topStation,t)))
+end)
+local mountainRiders={}
+local mountainVehicles={}
+local leaveMountain=Instance.new("RemoteEvent")
+leaveMountain.Name,leaveMountain.Parent="LeaveMountainRide",ReplicatedStorage
+local function clearMountainRider(player)
+ local state=mountainRiders[player]
+ if not state then return end
+ mountainRiders[player]=nil
+ if state.weld then state.weld:Destroy() end
+ if state.onLeave then state.onLeave() end
+ local humanoid=state.humanoid
+ if humanoid.Parent then humanoid.PlatformStand=false humanoid.WalkSpeed=16 humanoid.AutoRotate=true humanoid.Sit=false humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+ player:SetAttribute("MountainGear",nil)
+ if player.Character and humanoid.Health>0 then player.Character:PivotTo(state.root.CFrame*CFrame.new(5,4,0)) end
+end
+leaveMountain.OnServerEvent:Connect(clearMountainRider)
+for index,kind in {"Двухместные санки","Ватрушка","Лыжи","Сноуборд"} do
+ local laneX=330+(index-1)*38
+ local home=Vector3.new(laneX,144,-215)
+ local vehicle=Instance.new("Model") vehicle.Name,vehicle.Parent=kind,world
+ local carrier=part("Основа снаряжения",Vector3.new(kind=="Двухместные санки" and 6.4 or 3.5,0.5,5),home,index%2==0 and red or green,Enum.Material.Wood,vehicle)
+ carrier.CanCollide=false vehicle.PrimaryPart=carrier
+ if kind=="Ватрушка" then
+  carrier.Transparency=1
+  for ring=0,11 do
+   local a=ring*math.pi/6
+   round("Надувной борт ватрушки",Vector3.new(1.8,1.1,1.8),home+Vector3.new(math.sin(a)*1.8,0,math.cos(a)*1.8),ring%2==0 and red or gold,vehicle)
+  end
+ elseif kind=="Лыжи" then
+  carrier.Transparency=1
+  for _,side in ipairs({-1,1}) do part("Лыжа",Vector3.new(0.5,0.2,7),home+Vector3.new(side*0.7,0,0),gold,nil,vehicle) end
+ elseif kind=="Сноуборд" then
+  carrier.Size,carrier.Material=Vector3.new(1.6,0.25,6),Enum.Material.SmoothPlastic
+  for i=1,3 do part("Узор сноуборда",Vector3.new(1.65,0.06,0.25),home+Vector3.new(0,0.16,i-2),gold,nil,vehicle) end
+ else
+  for _,x in ipairs({-2.7,2.7}) do part("Полоз горных санок",Vector3.new(0.25,0.35,6),home+Vector3.new(x,-0.7,0),gold,Enum.Material.Metal,vehicle) end
+ end
+ local seats={}
+ if index<=2 then
+  for i=1,(index==1 and 2 or 1) do
+   local seat=Instance.new("Seat")
+   seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место на "..kind,Vector3.new(2.5,0.4,2.5),true,false
+   seat.Position,seat.Color,seat.Parent=home+Vector3.new(index==1 and (i==1 and -1.6 or 1.6) or 0,0.7,0),red,vehicle
+   table.insert(seats,seat)
+  end
+ end
+ local busy=false
+ local standingPlayer
+ local stationPost=part("Прокат: "..kind,Vector3.new(2,2,2),home+Vector3.new(0,0,-10),green)
+ sign(stationPost,kind.." • E — взять / сесть")
+ prompt(stationPost,"Взять: "..kind,function(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if busy then player:SetAttribute("WinterMessage","Снаряжение на трассе. Верни свободное снаряжение кнопкой F у проката") return end
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or mountainRiders[player] then return end
+  removeSkates(player)
+  if #seats>0 then
+   for _,seat in seats do if not seat.Occupant then character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid) return end end
+   player:SetAttribute("WinterMessage","Места заняты")
+  elseif not standingPlayer then
+   standingPlayer=player
+   character:PivotTo(carrier.CFrame*CFrame.new(0,3.4,0))
+   local root=character:FindFirstChild("HumanoidRootPart")
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=carrier,root,root
+   humanoid.PlatformStand=true
+   mountainRiders[player]={weld=weld,humanoid=humanoid,root=carrier,vehicle=vehicle,onLeave=function() standingPlayer=nil end}
+   player:SetAttribute("MountainGear",kind)
+  end
+ end)
+ prompt(carrier,"Начать спуск • F",function(player)
+  if busy then return end
+  local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+  local aboard=standingPlayer==player
+  for _,seat in seats do if seat.Occupant==humanoid then aboard=true end end
+  if not aboard then return end
+  busy=true
+  task.spawn(function()
+   local start=os.clock()
+   local duration=index==1 and 10 or (index==2 and 9 or 8)
+   while os.clock()-start<duration do
+    local t=math.clamp((os.clock()-start)/duration,0,1)
+    local progress=t*t
+    local point=Vector3.new(laneX,144-progress*140,-215+progress*360)
+    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(0,-140/360,1)))
+    RunService.Heartbeat:Wait()
+   end
+   vehicle:PivotTo(CFrame.lookAt(Vector3.new(laneX,2,149),Vector3.new(laneX,2,170)))
+   for _,p in vehicle:GetDescendants() do if p:IsA("BasePart") and p~=carrier then
+    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=carrier,p,carrier
+    p.Anchored=false p.Massless=true
+   end end
+   carrier.CanCollide=true carrier.CustomPhysicalProperties=PhysicalProperties.new(1,0.16,0.05)
+   carrier.Anchored=false carrier:SetNetworkOwner(nil)
+   carrier.AssemblyLinearVelocity=Vector3.new(0,0,42)
+  end)
+ end,"F")
+ prompt(stationPost,"Вернуть свободное снаряжение • F",function()
+  if not busy then return end
+  for _,seat in seats do if seat.Occupant then return end end
+  for player,state in mountainRiders do if state.vehicle==vehicle then return end end
+  if carrier.AssemblyLinearVelocity.Magnitude>1 then return end
+  for _,weld in carrier:GetChildren() do if weld:IsA("WeldConstraint") then weld:Destroy() end end
+  for _,p in vehicle:GetDescendants() do if p:IsA("BasePart") then p.Anchored=true end end
+  vehicle:PivotTo(CFrame.new(home)) standingPlayer=nil busy=false
+ end,"F")
+ table.insert(mountainVehicles,{model=vehicle,seats=seats,kind=kind})
+end
+RunService.Heartbeat:Connect(function()
+ for player,state in mountainRiders do
+  if not player.Character or state.humanoid.Health<=0 or state.humanoid.Parent~=player.Character then clearMountainRider(player) end
+ end
+end)
+Players.PlayerRemoving:Connect(clearMountainRider)
+-- Add a friend seat to all earlier sleds, including the reindeer touring sleds.
+for _,sled in world:GetChildren() do
+ if sled:IsA("Model") and (sled.Name=="Санки" or sled.Name=="Прогулочные санки") and sled.PrimaryPart then
+  local base=sled.PrimaryPart
+  local passenger=Instance.new("Seat")
+  passenger.Name,passenger.Size,passenger.Anchored,passenger.CanTouch="Место друга",Vector3.new(3,0.5,3),base.Anchored,false
+  passenger.CFrame,passenger.Color,passenger.Parent=base.CFrame*CFrame.new(3.2,0,0),red,sled
+  if not base.Anchored then local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=base,passenger,passenger end
+  local bench=part("Двухместная платформа санок",Vector3.new(6.6,0.25,3.5),Vector3.zero,green,Enum.Material.Wood,sled)
+  bench.CFrame,bench.Anchored=base.CFrame*CFrame.new(1.6,-0.35,0),base.Anchored
+  if not base.Anchored then local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=base,bench,bench end
+  local outerRunner=part("Широкий полоз",Vector3.new(0.25,0.3,4.5),Vector3.zero,gold,Enum.Material.Metal,sled)
+  outerRunner.CFrame,outerRunner.Anchored=base.CFrame*CFrame.new(4.5,-0.7,0),base.Anchored
+  outerRunner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.05)
+  if not base.Anchored then local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=base,outerRunner,outerRunner end
+  prompt(passenger,"Друг: сесть • прыжок — выйти",function(player)
+   local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+   if not humanoid or humanoid.Health<=0 or humanoid.Sit or passenger.Occupant then return end
+   removeSkates(player) character:PivotTo(passenger.CFrame*CFrame.new(0,2,0)) passenger:Sit(humanoid)
+  end)
+ end
+end
+
+local alpineRandom=Random.new(1742)
+for _=1,40 do tree(alpineRandom:NextNumber(-510,-335),alpineRandom:NextNumber(-395,395),alpineRandom:NextNumber(12,21)) end
+
+local mountainGuide=part("Указатель к горе",Vector3.new(0.7,4,0.7),Vector3.new(10,2,55),green,Enum.Material.Wood)
+sign(mountainGuide,"БОЛЬШАЯ ГОРА →\nФуникулёр справа от деревни",Vector3.new(0,4,0))
