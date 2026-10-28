@@ -2163,6 +2163,7 @@ local function setupBlizzard()
  setupDad()
  local state={active=false,elapsed=0,cycle=0,planted=0,trees=forestTrees}
  local function sheltered(pos)
+  if math.abs(pos.X-235)<28 and math.abs(pos.Z+345)<24 and pos.Y>0 and pos.Y<31 then return true end
   if math.abs(pos.X-x)<20.5 and math.abs(pos.Z-z)<18.5 and pos.Y>0 and pos.Y<26 then return true end
   for _,center in houseCenters do
    if math.abs(pos.X-center[1])<13.5 and math.abs(pos.Z-center[2])<12.5 and pos.Y>0 and pos.Y<14 then return true end
@@ -2238,7 +2239,40 @@ local function setupBlizzard()
  local function announce(message)
   for _,player in Players:GetPlayers() do player:SetAttribute("WinterMessage",message) end
  end
+ local function setupSnowWave()
+  local wave=Instance.new("Model") wave.Name="Огромная движущаяся волна снега" wave.Parent=world
+  local root=part("Фронт снежной волны",Vector3.new(1800,68,20),Vector3.new(0,-200,0),snow,Enum.Material.Snow,wave)
+  root.CanCollide,root.CanQuery=false,false wave.PrimaryPart=root
+  for i=0,29 do
+   local crest=round("Пенный снежный гребень",Vector3.new(85,48+(i%3)*9,50),Vector3.new(-870+i*60,-170,-10),snow,wave)
+   crest.Material=Enum.Material.Snow
+  end
+  local lastHit={}
+  state.wave=wave
+  RunService.Heartbeat:Connect(function(dt)
+   if not state.active or state.elapsed<10 then
+    if root.Position.Y>0 then wave:PivotTo(CFrame.new(0,-200,0)) end
+    return
+   end
+   local elapsed=state.elapsed+math.clamp(os.clock()-(state.lastStepAt or os.clock()),0,1)
+   local front=-700+math.clamp((elapsed-10)/80,0,1)*1400
+   wave:PivotTo(CFrame.new(0,34,front))
+   for _,player in Players:GetPlayers() do
+    local body=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if body and humanoid and humanoid.Health>0 and math.abs(body.Position.Z-front)<24 and body.Position.Y<92
+     and not sheltered(body.Position) and lastHit[player]~=state.cycle then
+     lastHit[player]=state.cycle humanoid:TakeDamage(12)
+     body.AssemblyLinearVelocity+=Vector3.new(0,14,22)
+     player:SetAttribute("WinterMessage","Тебя накрыла снежная волна! Укройся в доме")
+    end
+   end
+  end)
+  Players.PlayerRemoving:Connect(function(player) lastHit[player]=nil end)
+ end
+ setupSnowWave()
  function state.step(seconds)
+  state.lastStepAt=os.clock()
   state.elapsed+=seconds
   if not state.active and state.elapsed>=150 then
    state.active=true state.elapsed=0 state.cycle+=1
@@ -2262,20 +2296,101 @@ local function setupBlizzard()
  workspace:SetAttribute("BlizzardActive",false)
  workspace:SetAttribute("StormForecast","До бури: 2 мин 30 сек")
  local function setupLemonGift()
-  local center=Vector3.new(x-36,0,z+20)
-  local gift=Instance.new("Model") gift.Name="Огромный подарок с лимонами" gift.Parent=world
-  table.insert(navigationObstacles,{x=center.X,z=center.Z,radius=11})
-  local box=part("Подарок — Вяленый",Vector3.new(12,10,12),center+Vector3.new(0,5,0),red,nil,gift)
-  local lid=part("Крышка подарка",Vector3.new(13,1,13),center+Vector3.new(0,10.5,0),green,nil,gift)
-  part("Золотая лента",Vector3.new(1.5,10.2,12.2),center+Vector3.new(0,5,0),gold,Enum.Material.Metal,gift)
-  part("Лента поперёк",Vector3.new(12.2,10.2,1.5),center+Vector3.new(0,5,0),gold,Enum.Material.Metal,gift)
-  for _,side in {-1,1} do
-   local bow=round("Бант",Vector3.new(5,2,2.5),center+Vector3.new(side*2,12,0),gold,gift)
-   bow.Orientation=Vector3.new(0,0,side*25)
+ local function setupLemonHouse()
+  local center=Vector3.new(235,0,-345)
+  local yellow=Color3.fromRGB(249,214,53)
+  local function piece(name,size,offset,color,material)
+   return part(name,size,center+offset,color or yellow,material or Enum.Material.SmoothPlastic)
   end
-  local plaque=part("Вяленый",Vector3.new(7,3,0.5),center+Vector3.new(0,3,9),wood,nil,gift)
-  sign(plaque,"Вяленый\nПодарок с лимонами",Vector3.new(0,3,0))
-  local open=false
+  table.insert(navigationObstacles,{x=235,z=-345,radius=38})
+  piece("Пол лимонного дома",Vector3.new(58,1.2,50),Vector3.new(0,1,0),gold)
+  piece("Лимонная задняя стена",Vector3.new(58,28,1),Vector3.new(0,15,-25))
+  for _,side in {-1,1} do
+   piece("Лимонная стена",Vector3.new(1,28,50),Vector3.new(side*29,15,0))
+   piece("Лимонный фасад",Vector3.new(22,28,1),Vector3.new(side*18,15,25))
+   local window=piece("Лимонное окно",Vector3.new(10,10,1.1),Vector3.new(side*18,15,25),snow,Enum.Material.Glass)
+   window.Transparency=0.35
+  end
+  piece("Над дверью лимонного дома",Vector3.new(14,14,1),Vector3.new(0,22,25))
+  local roof=round("Крыша — огромный лимон",Vector3.new(66,18,58),center+Vector3.new(0,33,0),yellow,world)
+  roof.CanCollide=true
+  rod("Листик лимонного дома",center+Vector3.new(0,41,0),center+Vector3.new(12,46,0),1.5,green)
+  piece("Ковёр лимонного дома",Vector3.new(38,0.15,30),Vector3.new(0,1.7,0),green,Enum.Material.Fabric)
+  piece("Лимонный диван",Vector3.new(20,2,5),Vector3.new(0,3,10),gold,Enum.Material.Fabric)
+  piece("Спинка лимонного дивана",Vector3.new(20,5,1),Vector3.new(0,5,13),yellow,Enum.Material.Fabric)
+  local tv=piece("Телевизор лимонного дома",Vector3.new(22,12,1),Vector3.new(0,12,-22),Color3.fromRGB(22,31,43))
+  local surface=Instance.new("SurfaceGui") surface.Face=Enum.NormalId.Back surface.CanvasSize=Vector2.new(880,480) surface.Parent=tv
+  local label=Instance.new("TextLabel") label.Size=UDim2.fromScale(1,1) label.TextWrapped=true label.TextSize=44
+  label.BackgroundColor3=Color3.fromRGB(35,65,48) label.TextColor3=yellow label.Parent=surface
+  label.Text="ЛИМОННЫЙ КАНАЛ • Добро пожаловать, Леона!"
+  for _,offset in {-4,4} do
+   local seat=Instance.new("Seat") seat.Name="Смотреть лимонный телевизор" seat.Size=Vector3.new(3,0.4,3)
+   seat.Position=center+Vector3.new(offset,4.2,10) seat.Anchored=true seat.Transparency=1 seat.Parent=world
+   prompt(seat,"Смотреть телевизор",function(player)
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid and not seat.Occupant then seat:Sit(humanoid) end
+   end)
+  end
+  local friend=Instance.new("Model") friend.Name="Житель лимонного дома" friend.Parent=world
+  local body=part("Друг Леоны",Vector3.new(2.5,3,1.4),center+Vector3.new(-13,4.6,5),green,Enum.Material.Fabric,friend)
+  round("Голова друга",Vector3.new(1.8,2,1.8),body.Position+Vector3.new(0,2.4,0),Color3.fromRGB(245,203,172),friend)
+  round("Шапка друга",Vector3.new(2,1,2),body.Position+Vector3.new(0,3.2,0),yellow,friend)
+  for _,side in {-1,1} do
+   rod("Рука друга",body.Position+Vector3.new(side*1.4,1,0),body.Position+Vector3.new(side*1.6,-1,0),0.35,Color3.fromRGB(245,203,172),friend)
+   part("Нога друга",Vector3.new(0.8,1.7,1),body.Position+Vector3.new(side*0.6,-2,0),gold,nil,friend)
+   round("Глаз друга",Vector3.new(0.16,0.16,0.15),body.Position+Vector3.new(side*0.3,2.5,0.85),Color3.new(0,0,0),friend)
+  end
+  sign(body,"Друг Леоны",Vector3.new(0,5,0))
+  prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage","Друг Леоны: Привет! Поплаваем в подарке? А потом посмотрим лимонный канал вместе!") end)
+  sign(tv,"Лимонный дом Леоны",Vector3.new(0,11,0)) light(tv,gold,35,0.7)
+  task.spawn(function()
+   local news=false
+   while tv.Parent do
+    label.Text=news and ("ЛИМОННЫЕ НОВОСТИ\n"..(workspace:GetAttribute("StormForecast") or "")) or "ЛИМОННЫЙ КАНАЛ\n☀ Праздник для Леоны! ☀"
+    news=not news task.wait(4)
+   end
+  end)
+ end
+ setupLemonHouse()
+
+  local center=Vector3.new(x-48,0,z+35)
+  local gift=Instance.new("Model") gift.Name="Подарок для Леоны" gift.Parent=world
+  table.insert(navigationObstacles,{x=center.X,z=center.Z,radius=19})
+  local box=part("Подарок для Леоны",Vector3.new(30,1,30),center+Vector3.new(0,0.5,0),red,nil,gift)
+  for _,side in {-1,1} do
+   part("Борт подарка",Vector3.new(1,8,30),center+Vector3.new(side*15,4,0),red,nil,gift)
+   part("Борт подарка",Vector3.new(30,8,1),center+Vector3.new(0,4,side*15),red,nil,gift)
+   part("Лента подарка",Vector3.new(1.1,8.1,2),center+Vector3.new(side*15,4,0),gold,Enum.Material.Metal,gift)
+  end
+  local lid=part("Открытая крышка подарка",Vector3.new(32,1,32),center+Vector3.new(0,15,-23),green,nil,gift)
+  lid.Orientation=Vector3.new(-65,0,0)
+  for i=1,12 do
+   part("Лестница в подарок",Vector3.new(6,0.7,1.5),center+Vector3.new(0,i*0.65,32-i*1.4),red,nil,gift)
+  end
+  for i=1,8 do
+   part("Выход из подарка",Vector3.new(5,0.8,1.5),center+Vector3.new(10,i*0.9,2+i*1.4),gold,nil,gift)
+  end
+  local plaque=part("Табличка подарка",Vector3.new(9,3,0.5),center+Vector3.new(-9,4,17),wood,nil,gift)
+  sign(plaque,"Подарок для Леоны",Vector3.new(0,3,0))
+  local fruits={}
+  for i=1,144 do
+   local pos=center+Vector3.new(((i-1)%12-5.5)*2.25,5.5+(i%3)*0.35,(math.floor((i-1)/12)-5.5)*2.25)
+   local fruit=round("Лимон в подарке",Vector3.new(2,1.8,2.6),pos,Color3.fromRGB(255,222,48),gift)
+   table.insert(fruits,{part=fruit,position=pos,phase=i})
+  end
+  state.poolCenter=center
+  RunService.Heartbeat:Connect(function(dt)
+   for _,fruit in fruits do fruit.part.Position=fruit.position+Vector3.new(0,math.sin(os.clock()*1.4+fruit.phase)*0.25,0) end
+   for _,player in Players:GetPlayers() do
+    local body=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if body and humanoid and humanoid.Health>0 and math.abs(body.Position.X-center.X)<14 and math.abs(body.Position.Z-center.Z)<14
+     and body.Position.Y>1 and body.Position.Y<7 and not humanoid.Sit then
+     local velocity=body.AssemblyLinearVelocity
+     body.AssemblyLinearVelocity=Vector3.new(velocity.X,math.max(velocity.Y,8+(6-body.Position.Y)*3),velocity.Z)
+    end
+   end
+  end)
   local function lemonTool(player)
    if player.Backpack:FindFirstChild("Лимоны") or player.Character:FindFirstChild("Лимоны") then
     player:SetAttribute("WinterMessage","У тебя уже есть лимоны — выбери их, чтобы поесть") return
@@ -2299,15 +2414,8 @@ local function setupBlizzard()
    tool.Parent=player.Backpack
    player:SetAttribute("WinterMessage","В подарке целая куча лимонов! Взято 8: выбери «Лимоны» и нажми, чтобы съесть")
   end
-  prompt(box,"Открыть и взять лимоны",function(player)
-   if not open then
-    open=true lid.Position+=Vector3.new(0,3,5) lid.Orientation=Vector3.new(-35,0,0)
-    for i=1,24 do
-     local fruit=round("Лимон в подарке",Vector3.new(1.2,1.2,1.8),center+Vector3.new((i%5-2)*1.7,10+(i%3)*0.3,(math.floor(i/5)-2)*1.6),Color3.fromRGB(255,222,48),gift)
-    end
-   end
-   lemonTool(player)
-  end)
+  prompt(plaque,"Взять угощение",lemonTool)
+
  end
  setupLemonGift()
  local beacon=build("Дом Насти — укрытие от бури",Vector3.new(2,5,2),Vector3.new(0,3,25),gold)

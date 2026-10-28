@@ -343,6 +343,7 @@ task.spawn(function()
     or (math.abs(pos.X+130)<15 and math.abs(pos.Z+100)<14 and pos.Y<24)
     or (math.abs(pos.X+40)<15 and math.abs(pos.Z-125)<14 and pos.Y<24)
    indoors=indoors or (math.abs(pos.X-155)<20.5 and math.abs(pos.Z+340)<18.5 and pos.Y<26)
+   indoors=indoors or (math.abs(pos.X-235)<28 and math.abs(pos.Z+345)<24 and pos.Y<31)
    local storm=workspace:GetAttribute("BlizzardActive")
    flakes.Rate=storm and 850 or 240
    flakes.Speed=storm and NumberRange.new(25,38) or NumberRange.new(5,8)
