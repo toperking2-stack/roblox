@@ -2089,6 +2089,7 @@ end
 local airportState=setupAirport()
 
 -- Weather owns its schedule and damage on the server; inventory never trusts client input.
+local applyCartoonSlime
 local function setupBlizzard()
  local x,z=155,-340
  local wood=Color3.fromRGB(139,87,59)
@@ -2522,6 +2523,7 @@ local function setupBlizzard()
        nearby[player]=true visits[player]=(visits[player] or 0)+1
        if visits[player]>=15 and os.clock()-lastPrank>=45 then
         lastPrank=os.clock() visits[player]=0
+        if applyCartoonSlime then applyCartoonSlime(player) end
         local cloud=Instance.new("ParticleEmitter") cloud.Name="Мультяшное облачко Леона"
         cloud.Texture="rbxasset://textures/particles/smoke_main.dds"
         cloud.Color=ColorSequence.new(Color3.fromRGB(139,99,61))
@@ -2730,6 +2732,68 @@ local function setupWinterPhones()
  return {calls=calls,give=give,remote=remote}
 end
 local phoneState=setupWinterPhones()
+
+local function setupCartoonSlime()
+ local effects={}
+ local function clear(player)
+  local effect=effects[player] if not effect then return end
+  effects[player]=nil
+  effect.tint:Destroy() effect.cloud:Destroy()
+  player:SetAttribute("CartoonSlime",false)
+ end
+ local function apply(player)
+  local character=player.Character
+  local root=character and character:FindFirstChild("HumanoidRootPart")
+  if not root then return end
+  clear(player)
+  local tint=Instance.new("Highlight") tint.Name="Мультяшная коричневая слизь"
+  tint.Adornee=character tint.FillColor=Color3.fromRGB(137,92,55) tint.FillTransparency=0.25
+  tint.OutlineTransparency=1 tint.DepthMode=Enum.HighlightDepthMode.Occluded tint.Parent=character
+  local cloud=Instance.new("ParticleEmitter") cloud.Name="Зелёные облачки слизи"
+  cloud.Texture="rbxasset://textures/particles/smoke_main.dds" cloud.Color=ColorSequence.new(Color3.fromRGB(139,183,72))
+  cloud.Rate=5 cloud.Lifetime=NumberRange.new(0.7,1.2) cloud.Speed=NumberRange.new(1,2)
+  cloud.Size=NumberSequence.new(0.8) cloud.Transparency=NumberSequence.new(0.65) cloud.Parent=root
+  local effect={tint=tint,cloud=cloud,character=character} effects[player]=effect
+  player:SetAttribute("CartoonSlime",true)
+  player:SetAttribute("WinterMessage","Лимонная слизь! Смой её в душе у Леона или подожди полминуты")
+  -- The visible projectile is decorative; the prank never applies damage or changes clothes.
+  local start=Vector3.new(222,5,-340)
+  local blob=ball("Шарик мультяшной слизи",0.8,start,Color3.fromRGB(137,92,55))
+  blob.CanCollide,blob.CanQuery=false,false
+  TweenService:Create(blob,TweenInfo.new(0.4),{Position=root.Position}):Play() Debris:AddItem(blob,0.5)
+  task.delay(30,function() if effects[player]==effect then clear(player) end end)
+ end
+ local center=Vector3.new(255,0,-355)
+ local floor=part("Душ в доме Леона",Vector3.new(6,0.3,6),center+Vector3.new(0,1.9,0),snow,Enum.Material.Marble)
+ for _,side in {-1,1} do
+  local wall=part("Стекло душа",Vector3.new(0.2,8,6),center+Vector3.new(side*3,6,0),Color3.fromRGB(179,223,234),Enum.Material.Glass)
+  wall.Transparency=0.65
+ end
+ local head=part("Лейка душа",Vector3.new(2,0.3,2),center+Vector3.new(0,10,0),gold,Enum.Material.Metal)
+ local water=Instance.new("ParticleEmitter") water.Texture="rbxasset://textures/particles/sparkles_main.dds"
+ water.Rate=25 water.Lifetime=NumberRange.new(0.4,0.7) water.Speed=NumberRange.new(9,12)
+ water.EmissionDirection=Enum.NormalId.Bottom water.Size=NumberSequence.new(0.12) water.Parent=head
+ local function wash(player)
+  clear(player) player:SetAttribute("WinterMessage","Слизь смыта! Снова чисто ✨")
+ end
+ prompt(floor,"Смыть слизь",wash)
+ floor.Touched:Connect(function(hit)
+  local player=Players:GetPlayerFromCharacter(hit.Parent)
+  local root=player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+  if root and (root.Position-floor.Position).Magnitude<8 and effects[player] then wash(player) end
+ end)
+ sign(head,"Душ • смыть слизь",Vector3.new(0,2,0))
+ RunService.Heartbeat:Connect(function()
+  for player,effect in effects do
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if player.Character~=effect.character or not humanoid or humanoid.Health<=0 then clear(player) end
+  end
+ end)
+ Players.PlayerRemoving:Connect(clear)
+ applyCartoonSlime=apply
+ return {effects=effects,apply=apply,clear=clear}
+end
+local slimeState=setupCartoonSlime()
 ]]></string>
       </Properties>
     </Item>
@@ -2771,7 +2835,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v13.1 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v13.2 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
