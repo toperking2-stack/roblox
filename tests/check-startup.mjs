@@ -49,8 +49,14 @@ local function count(name)
 end
 local function checkStorm()
  humanoid.MaxHealth=100
+ interact(named('Подарок — Вяленый'))
+ local lemons=assert(backpack:FindFirstChild('Лимоны'),'gift gives lemons')
+ lemons.Parent=character humanoid.Health=70 lemons.Activated:Fire()
+ assert(humanoid.Health==80 and lemons:GetAttribute('LemonsLeft')==7,'lemon heals and consumes one fruit')
+ lemons.Activated:Fire() assert(lemons:GetAttribute('LemonsLeft')==7,'lemon eating cooldown')
+ lemons.Parent=backpack humanoid.Health=100
  interact(named('Папа'))
- assert(string.find(player:GetAttribute('WinterMessage'),'Папа:'),'upstairs dad dialogue')
+ assert(string.find(player:GetAttribute('WinterMessage'),'Папа Егор:'),'upstairs dad dialogue')
  interact(named('Посмотреть телевизор с папой'))
  assert(named('Посмотреть телевизор с папой').Occupant==humanoid,'watch TV beside dad')
  named('Посмотреть телевизор с папой').Occupant=nil humanoid.Sit=false
@@ -60,6 +66,7 @@ local function checkStorm()
  root.Position=Vector3.new(0,4,50)
  stormState.step(150)
  assert(workspace:GetAttribute('BlizzardActive'),'storm starts')
+ assert(string.find(workspace:GetAttribute('StormForecast'),'Буря идёт'),'TV forecast reports storm')
  local before=humanoid.Health
  stormState.step(5)
  assert(humanoid.Health==before,'warning grace period')

@@ -2109,7 +2109,7 @@ local function setupBlizzard()
  sign(body,"Мама Настя • макарошки и уют",Vector3.new(0,5,0))
  -- A seated parent and a self-contained animated holiday television upstairs.
  local function setupDad()
-  local dad=Instance.new("Model") dad.Name="Папа смотрит телевизор" dad.Parent=world
+  local dad=Instance.new("Model") dad.Name="Папа Егор смотрит телевизор" dad.Parent=world
   local origin=Vector3.new(x-12,18.2,z-12)
   local torso=part("Папа",Vector3.new(2.8,3,1.5),origin,Color3.fromRGB(71,104,158),Enum.Material.Fabric,dad)
   round("Голова папы",Vector3.new(1.8,2,1.8),origin+Vector3.new(0,2.4,0),Color3.fromRGB(243,199,163),dad)
@@ -2121,6 +2121,8 @@ local function setupBlizzard()
    rod("Голень папы",origin+Vector3.new(side*0.7,-1.5,2.6),origin+Vector3.new(side*0.7,-3,2.6),0.4,Color3.fromRGB(54,61,76),dad)
    part("Тапочки папы",Vector3.new(1,0.5,1.6),origin+Vector3.new(side*0.7,-3.2,2.9),green,Enum.Material.Fabric,dad)
   end
+  part("Золотая отделка свитера",Vector3.new(2.9,0.3,1.6),origin+Vector3.new(0,0.8,0),gold,Enum.Material.Metal,dad)
+  round("Золотая пуговица",Vector3.new(0.22,0.22,0.15),origin+Vector3.new(0,0,0.8),gold,dad)
   local remote=part("Пульт телевизора",Vector3.new(0.4,0.15,0.9),origin+Vector3.new(1.6,-0.8,1.2),Color3.fromRGB(30,33,40),nil,dad)
   for _,item in dad:GetDescendants() do
    if item:IsA("BasePart") and item~=torso then
@@ -2137,9 +2139,9 @@ local function setupBlizzard()
   picture.Text="❄ НОВОГОДНИЙ КАНАЛ ❄" picture.Parent=screen
   local frames={"❄ НОВОГОДНИЙ КАНАЛ ❄","☃ Зимняя сказка ☃","Ёлочка, огоньки и подарки!","С праздником! ♥"}
   light(tv,Color3.fromRGB(137,193,255),15,0.35)
-  sign(torso,"Папа • смотрит новогодний телевизор",Vector3.new(0,5,0))
+  sign(torso,"Папа Егор • смотрим телевизор вместе",Vector3.new(0,5,0))
   prompt(torso,"Поговорить с папой",function(player)
-   player:SetAttribute("WinterMessage","Папа: Присаживайся рядом! Смотрим новогоднюю передачу, пока снаружи метель.")
+   player:SetAttribute("WinterMessage","Папа Егор: Присаживайся рядом! Смотрим новогоднюю передачу, пока снаружи метель.")
   end)
   local seat=Instance.new("Seat") seat.Name="Посмотреть телевизор с папой" seat.Size=Vector3.new(3,0.4,3)
   seat.Position=origin+Vector3.new(3, -1.6,0) seat.Orientation=Vector3.new(0,180,0)
@@ -2151,7 +2153,9 @@ local function setupBlizzard()
   task.spawn(function()
    local frame=1
    while tv.Parent do
-    picture.Text=frames[frame] frame=frame%#frames+1
+    picture.Text=frame%2==0 and ("НОВОСТИ ПОГОДЫ\n"..(workspace:GetAttribute("StormForecast") or "Прогноз уточняется")) or frames[frame]
+    picture.TextWrapped=true
+    frame=frame%#frames+1
     task.wait(4)
    end
   end)
@@ -2245,6 +2249,8 @@ local function setupBlizzard()
    state.active=false state.elapsed=0 workspace:SetAttribute("BlizzardActive",false)
    announce("Буря закончилась! Можно гулять и восстанавливать лес: ищите саженцы возле сломанных деревьев.")
   end
+  local remaining=math.max(0,math.ceil((state.active and 90 or 150)-state.elapsed))
+  workspace:SetAttribute("StormForecast",(state.active and "Буря идёт! До конца: " or "До снежной бури: ")..math.floor(remaining/60).." мин "..(remaining%60).." сек")
   for _,player in Players:GetPlayers() do
    local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -2254,6 +2260,56 @@ local function setupBlizzard()
   end
  end
  workspace:SetAttribute("BlizzardActive",false)
+ workspace:SetAttribute("StormForecast","До бури: 2 мин 30 сек")
+ local function setupLemonGift()
+  local center=Vector3.new(x-36,0,z+20)
+  local gift=Instance.new("Model") gift.Name="Огромный подарок с лимонами" gift.Parent=world
+  table.insert(navigationObstacles,{x=center.X,z=center.Z,radius=11})
+  local box=part("Подарок — Вяленый",Vector3.new(12,10,12),center+Vector3.new(0,5,0),red,nil,gift)
+  local lid=part("Крышка подарка",Vector3.new(13,1,13),center+Vector3.new(0,10.5,0),green,nil,gift)
+  part("Золотая лента",Vector3.new(1.5,10.2,12.2),center+Vector3.new(0,5,0),gold,Enum.Material.Metal,gift)
+  part("Лента поперёк",Vector3.new(12.2,10.2,1.5),center+Vector3.new(0,5,0),gold,Enum.Material.Metal,gift)
+  for _,side in {-1,1} do
+   local bow=round("Бант",Vector3.new(5,2,2.5),center+Vector3.new(side*2,12,0),gold,gift)
+   bow.Orientation=Vector3.new(0,0,side*25)
+  end
+  local plaque=part("Вяленый",Vector3.new(7,3,0.5),center+Vector3.new(0,3,9),wood,nil,gift)
+  sign(plaque,"Вяленый\nПодарок с лимонами",Vector3.new(0,3,0))
+  local open=false
+  local function lemonTool(player)
+   if player.Backpack:FindFirstChild("Лимоны") or player.Character:FindFirstChild("Лимоны") then
+    player:SetAttribute("WinterMessage","У тебя уже есть лимоны — выбери их, чтобы поесть") return
+   end
+   local tool=Instance.new("Tool") tool.Name="Лимоны" tool.RequiresHandle=true
+   local fruit=part("Handle",Vector3.new(0.9,0.9,1.4),Vector3.zero,Color3.fromRGB(255,222,48),nil,tool)
+   fruit.Shape=Enum.PartType.Ball fruit.Anchored,fruit.CanCollide,fruit.Massless=false,false,true
+   local bites,last=8,-10
+   tool:SetAttribute("LemonsLeft",bites)
+   tool.Activated:Connect(function()
+    if tool.Parent~=player.Character or bites<=0 or os.clock()-last<2 then return end
+    local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health<=0 then return end
+    last=os.clock() bites-=1 tool:SetAttribute("LemonsLeft",bites)
+    humanoid.Health=math.min(humanoid.MaxHealth,humanoid.Health+10)
+    tool.Grip=CFrame.new(0,-0.4,-0.5)*CFrame.Angles(-1,0,0)
+    player:SetAttribute("WinterMessage","Кисленько! +10 HP. Лимонов осталось: "..bites)
+    task.delay(0.6,function() if tool.Parent then tool.Grip=CFrame.new() end end)
+    if bites==0 then tool:Destroy() end
+   end)
+   tool.Parent=player.Backpack
+   player:SetAttribute("WinterMessage","В подарке целая куча лимонов! Взято 8: выбери «Лимоны» и нажми, чтобы съесть")
+  end
+  prompt(box,"Открыть и взять лимоны",function(player)
+   if not open then
+    open=true lid.Position+=Vector3.new(0,3,5) lid.Orientation=Vector3.new(-35,0,0)
+    for i=1,24 do
+     local fruit=round("Лимон в подарке",Vector3.new(1.2,1.2,1.8),center+Vector3.new((i%5-2)*1.7,10+(i%3)*0.3,(math.floor(i/5)-2)*1.6),Color3.fromRGB(255,222,48),gift)
+    end
+   end
+   lemonTool(player)
+  end)
+ end
+ setupLemonGift()
  local beacon=build("Дом Насти — укрытие от бури",Vector3.new(2,5,2),Vector3.new(0,3,25),gold)
  sign(beacon,"Двухэтажный дом Насти\nМакарошки • укрытие от бури",Vector3.new(0,5,0))
  local direction=part("Указатель к Насте",Vector3.new(2,4,2),Vector3.new(24,2,46),gold)
