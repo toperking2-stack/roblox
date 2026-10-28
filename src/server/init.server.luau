@@ -2501,11 +2501,14 @@ local function setupBlizzard()
      for _,player in Players:GetPlayers() do
       local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
       local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-      if root and humanoid and humanoid.Health>0 and math.abs(root.Position.X-235)<28 and math.abs(root.Position.Z+345)<24
+      if state.active and os.clock()-lastPrank>=45 and root and humanoid and humanoid.Health>0 and math.abs(root.Position.X-235)<28 and math.abs(root.Position.Z+345)<24
        and root.Position.Y>1 and root.Position.Y<29 and (root.Position-body.Position).Magnitude<18 then
-       nearby[player]=true visits[player]=(visits[player] or 0)+1
-       if state.active and humanoid.Sit and visits[player]>=15 and os.clock()-lastPrank>=45 then
-        lastPrank=os.clock() visits[player]=0
+       nearby[player]=true visits[player]=visits[player] or os.clock()
+       local remaining=math.max(0,math.ceil(15-(os.clock()-visits[player])))
+       player:SetAttribute("LeonPrankSeconds",remaining)
+       if remaining<=0 then
+        lastPrank=os.clock() visits[player]=nil
+        player:SetAttribute("LeonPrankSeconds",nil)
         slip()
         if applyCartoonSlime then applyCartoonSlime(player) end
         local cloud=Instance.new("ParticleEmitter") cloud.Name="Мультяшное облачко Леона"
@@ -2522,7 +2525,9 @@ local function setupBlizzard()
        end
       end
      end
-     for player in visits do if not nearby[player] then visits[player]=nil end end
+     for _,player in Players:GetPlayers() do
+      if not nearby[player] then visits[player]=nil player:SetAttribute("LeonPrankSeconds",nil) end
+     end
     end
    end)
    Players.PlayerRemoving:Connect(function(player) visits[player]=nil end)

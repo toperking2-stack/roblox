@@ -159,9 +159,17 @@ checkStorm()
 local function checkLeonPrank()
  root.Position=Vector3.new(224,4,-340)
  local wasActive=stormState.active
- stormState.active=true humanoid.Sit=true
+ stormState.active=false humanoid.Sit=false
+ advance(2)
+ assert(player:GetAttribute('LeonPrankSeconds')==nil,'no prank countdown outside storm')
+ stormState.active=true
+ advance(2)
+ assert((player:GetAttribute('LeonPrankSeconds') or 0)>=13,'standing near Leon starts fifteen second countdown')
+ root.Position=Vector3.new(250,4,-365) advance(1.1)
+ assert(player:GetAttribute('LeonPrankSeconds')==nil,'walking away resets countdown')
+ root.Position=Vector3.new(224,4,-340)
  local health=humanoid.Health
- advance(16)
+ advance(17)
  local cloud=named('Мультяшное облачко Леона')
  assert(cloud.Emitted==12,'nearby house guest triggers cartoon cloud')
  assert(humanoid.Health==health,'prank causes no damage')
@@ -560,6 +568,12 @@ humanoid.RigType=Enum.HumanoidRigType.R15
 humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.MoveDirection=16,true,Vector3.new(1,0,0)
 `;
  const clientChecks=`
+workspace:SetAttribute('BlizzardActive',true)
+player:SetAttribute('LeonPrankSeconds',15)
+assert(named('Отсчёт шалости Леона').Visible and string.find(named('Отсчёт шалости Леона').Text,'15'),'bottom right prank countdown displays fifteen seconds')
+workspace:SetAttribute('BlizzardActive',false)
+assert(not named('Отсчёт шалости Леона').Visible,'countdown hides when storm ends')
+player:SetAttribute('LeonPrankSeconds',nil)
 workspace:SetAttribute('StormForecast','До снежной бури: 1 мин 12 сек')
 assert(named('Таймер бури').Text=='До снежной бури: 1 мин 12 сек','bottom left countdown follows server forecast')
 phoneState.remote.OnServerEvent:Fire(player,'close')

@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v13.3 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v13.4 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -584,3 +584,20 @@ local function setupPhoneAndWeatherHUD()
  render()
 end
 setupPhoneAndWeatherHUD()
+
+local function setupLeonCountdown()
+ local countdown=Instance.new("TextLabel") countdown.Name="Отсчёт шалости Леона"
+ countdown.Size,countdown.Position=UDim2.new(0,230,0,50),UDim2.new(1,-246,1,-112)
+ countdown.BackgroundColor3=Color3.fromRGB(52,65,43) countdown.BackgroundTransparency=0.1
+ countdown.TextColor3=Color3.fromRGB(255,235,150) countdown.TextSize=17 countdown.TextWrapped=true
+ countdown.Parent=gui
+ local function refresh()
+  local seconds=player:GetAttribute("LeonPrankSeconds")
+  countdown.Visible=type(seconds)=="number" and workspace:GetAttribute("BlizzardActive")==true
+  countdown.Text="Шалость Леона\n"..tostring(seconds or 15).." сек"
+ end
+ player:GetAttributeChangedSignal("LeonPrankSeconds"):Connect(refresh)
+ workspace:GetAttributeChangedSignal("BlizzardActive"):Connect(refresh)
+ refresh()
+end
+setupLeonCountdown()
