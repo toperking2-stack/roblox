@@ -158,7 +158,12 @@ local function light(on, color, range, brightness)
  l.Parent = on
 end
 -- Tapered circular tiers produce a fir silhouette without uploaded meshes.
+local forestTrees={}
 local function tree(x,z,height)
+ local model=Instance.new("Model") model.Name="Ёлка" model.Parent=world
+ local basePart=part
+ local function part(name,size,position,color,material) return basePart(name,size,position,color,material,model) end
+ table.insert(forestTrees,{model=model,x=x,z=z,height=height})
  table.insert(navigationObstacles,{x=x,z=z,radius=math.max(9,height*0.29+4)})
  part("Ствол",Vector3.new(1.2,height*0.32,1.2),Vector3.new(x,height*0.16,z),Color3.fromRGB(97,64,47),Enum.Material.Wood)
  local rings=(math.abs(x)>180 or math.abs(z)>170) and 4 or 8
@@ -2082,6 +2087,159 @@ Players.PlayerRemoving:Connect(function(player) clearParachute(player) flightPil
 return {aircraft=aircraft,parachutes=parachutes,pilots=flightPilots,eject=ejectAircraft,staff=airportStaff}
 end
 local airportState=setupAirport()
+
+-- Weather owns its schedule and damage on the server; inventory never trusts client input.
+local function setupBlizzard()
+ local x,z=155,-340
+ local wood=Color3.fromRGB(139,87,59)
+ local function build(name,size,offset,color,material)
+  return part(name,size,Vector3.new(x,0,z)+offset,color or wood,material or Enum.Material.WoodPlanks)
+ end
+ table.insert(navigationObstacles,{x=x,z=z,radius=30})
+ build("Пол дома Насти",Vector3.new(42,1,38),Vector3.new(0,1,0))
+ for _,side in {-1,1} do
+  build("Стена дома Насти",Vector3.new(1,25,38),Vector3.new(side*21,13,0))
+  build("Фасад дома Насти",Vector3.new(16,25,1),Vector3.new(side*13,13,19))
+  for _,level in {7,20} do
+   local window=build("Тёплое окно",Vector3.new(5,5,1.2),Vector3.new(side*13,level,19),gold,Enum.Material.Neon)
+   light(window,gold,14,0.4)
+  end
+ end
+ build("Задняя стена дома Насти",Vector3.new(42,25,1),Vector3.new(0,13,-19))
+ build("Над входом",Vector3.new(10,16,1),Vector3.new(0,18,19))
+ -- An open stairwell along the right wall gives genuine access to the second floor.
+ build("Второй этаж",Vector3.new(31,1,38),Vector3.new(-5.5,14,0))
+ build("Площадка лестницы",Vector3.new(11,1,9),Vector3.new(15.5,14,-14.5))
+ for i=1,20 do
+  build("Ступенька",Vector3.new(8,0.65,1.5),Vector3.new(15,1.5+i*0.65,17-i*1.5))
+ end
+ for i=0,9 do build("Перила второго этажа",Vector3.new(0.3,3,0.3),Vector3.new(10,16,-8+i*2.8),snow) end
+ build("Поручень",Vector3.new(0.4,0.4,28),Vector3.new(10,17.5,5),snow)
+ build("Заснеженная крыша",Vector3.new(46,1.5,42),Vector3.new(0,26,0),snow,Enum.Material.Snow)
+ for _,level in {1.6,14.6} do
+  build("Праздничный ковёр",Vector3.new(20,0.12,12),Vector3.new(-5,level,0),red,Enum.Material.Fabric)
+  build("Уютный диван",Vector3.new(10,2,4),Vector3.new(-12,level+1,-12),green,Enum.Material.Fabric)
+  build("Спинка дивана",Vector3.new(10,4,1),Vector3.new(-12,level+2,-14),green,Enum.Material.Fabric)
+ end
+ local hearth=build("Камин Насти",Vector3.new(7,1,3),Vector3.new(0,2,-16),Color3.fromRGB(70,55,51),Enum.Material.Brick)
+ local fire=Instance.new("Fire") fire.Size,fire.Heat,fire.Parent=4,3,hearth light(hearth,gold,24,1)
+ local tableTop=build("Обеденный стол",Vector3.new(10,0.6,6),Vector3.new(-6,4,4))
+ for _,dx in {-10,-2} do build("Ножка стола",Vector3.new(0.6,3,0.6),Vector3.new(dx,2.5,4)) end
+ local mom=Instance.new("Model") mom.Name="Мама Настя" mom.Parent=world
+ local body=part("Настя",Vector3.new(2.6,3.2,1.5),Vector3.new(x-8,4,z-5),Color3.fromRGB(111,151,140),Enum.Material.Fabric,mom)
+ round("Голова",Vector3.new(1.7,1.9,1.7),body.Position+Vector3.new(0,2.4,0),Color3.fromRGB(248,207,173),mom)
+ round("Причёска",Vector3.new(1.9,1,1.9),body.Position+Vector3.new(0,3,0),Color3.fromRGB(99,60,36),mom)
+ for _,side in {-1,1} do
+  rod("Рука Насти",body.Position+Vector3.new(side*1.5,1,0),body.Position+Vector3.new(side*1.7,-1,0),0.36,Color3.fromRGB(248,207,173),mom)
+  part("Нога Насти",Vector3.new(0.8,1.5,1),body.Position+Vector3.new(side*0.7,-2,0),wood,nil,mom)
+  round("Глаза",Vector3.new(0.16,0.16,0.12),body.Position+Vector3.new(side*0.33,2.55,-0.81),Color3.new(0,0,0),mom)
+ end
+ sign(body,"Мама Настя • макарошки и уют",Vector3.new(0,5,0))
+ local state={active=false,elapsed=0,cycle=0,planted=0,trees=forestTrees}
+ local function sheltered(pos)
+  if math.abs(pos.X-x)<20.5 and math.abs(pos.Z-z)<18.5 and pos.Y>0 and pos.Y<26 then return true end
+  for _,center in houseCenters do
+   if math.abs(pos.X-center[1])<13.5 and math.abs(pos.Z-center[2])<12.5 and pos.Y>0 and pos.Y<14 then return true end
+  end
+  return false
+ end
+ state.sheltered=sheltered
+ prompt(body,"Попросить макарошки",function(player)
+  player:SetAttribute("WinterMessage",state.active and "Настя: Буря снаружи! Садись, кушай макарошки и оставайся до её конца." or "Настя: Заходи, я приготовила макарошки! Здесь всегда можно отдохнуть.")
+  if player.Backpack:FindFirstChild("Макарошки") or player.Character:FindFirstChild("Макарошки") then return end
+  local tool=Instance.new("Tool") tool.Name="Макарошки" tool.RequiresHandle=true
+  local bowl=part("Handle",Vector3.new(1.4,0.35,1.4),Vector3.zero,snow,Enum.Material.SmoothPlastic,tool)
+  bowl.Anchored,bowl.CanCollide,bowl.Massless=false,false,true
+  for i=1,9 do
+   local noodle=part("Макароны",Vector3.new(0.45,0.16,0.17),Vector3.new((i%3-1)*0.35,0.25,math.floor((i-1)/3)*0.3-0.3),gold,nil,tool)
+   noodle.Anchored,noodle.CanCollide,noodle.Massless=false,false,true
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=bowl,noodle,bowl
+  end
+  local last=-10
+  tool.Activated:Connect(function()
+   if tool.Parent~=player.Character or os.clock()-last<3 then return end
+   last=os.clock()
+   local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
+   if humanoid and humanoid.Health>0 then humanoid.Health=math.min(humanoid.MaxHealth,humanoid.Health+15) end
+   tool.Grip=CFrame.new(0,-0.5,-0.6)*CFrame.Angles(-1,0,0)
+   player:SetAttribute("WinterMessage","Вкусные макарошки! +15 здоровья")
+   task.delay(0.8,function() if tool.Parent then tool.Grip=CFrame.new() end end)
+  end)
+  tool.Parent=player.Backpack
+ end)
+ local function giveSeed(player)
+  player:SetAttribute("FirSaplings",(player:GetAttribute("FirSaplings") or 0)+1)
+  if player.Backpack:FindFirstChild("Посадить ёлочку") or player.Character:FindFirstChild("Посадить ёлочку") then return end
+  local tool=Instance.new("Tool") tool.Name="Посадить ёлочку" tool.RequiresHandle=false
+  tool.Activated:Connect(function()
+   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+   if tool.Parent~=player.Character or not root or (player:GetAttribute("FirSaplings") or 0)<1 then return end
+   local pos=root.Position+root.CFrame.LookVector*6
+   if sheltered(pos) or math.abs(pos.X)>500 or math.abs(pos.Z)>600 or pos.Y>10 or state.planted>=40 then
+    player:SetAttribute("WinterMessage","Посади ёлочку на свободной снежной поляне в парке") return
+   end
+   for _,obstacle in navigationObstacles do
+    if (Vector3.new(pos.X,0,pos.Z)-Vector3.new(obstacle.x,0,obstacle.z)).Magnitude<obstacle.radius+5 then
+     player:SetAttribute("WinterMessage","Здесь тесно: отойди от деревьев и построек") return
+    end
+   end
+   player:SetAttribute("FirSaplings",player:GetAttribute("FirSaplings")-1)
+   state.planted+=1
+   tree(pos.X,pos.Z,12)
+   player:SetAttribute("WinterMessage","Ёлочка посажена! Спасибо за восстановление леса ♥")
+  end)
+  tool.Parent=player.Backpack
+ end
+ local function breakTrees()
+  local broken=0
+  for _,entry in forestTrees do
+   if not entry.broken and entry.height>=16 and (math.abs(entry.x)>160 or math.abs(entry.z)>160) then
+    entry.broken=true entry.model:Destroy()
+    local stump=part("Пень после бури",Vector3.new(1.4,1.5,1.4),Vector3.new(entry.x,0.75,entry.z),wood,Enum.Material.Wood)
+    local log=rod("Сломанный ствол",Vector3.new(entry.x+2,0.9,entry.z),Vector3.new(entry.x+10,0.9,entry.z+3),0.65,wood)
+    local seed=part("Саженец ёлки",Vector3.new(0.4,1.5,0.4),stump.Position+Vector3.new(2,0.5,2),wood,Enum.Material.Wood)
+    round("Хвоя саженца",Vector3.new(1,1.5,1),seed.Position+Vector3.new(0,0.6,0),green,seed)
+    local taken=false
+    prompt(seed,"Подобрать саженец",function(player)
+     if taken then return end taken=true giveSeed(player) seed:Destroy()
+     player:SetAttribute("WinterMessage","Саженец найден! Выбери «Посадить ёлочку» и нажми на свободной поляне")
+    end)
+    Debris:AddItem(stump,300) Debris:AddItem(log,300) Debris:AddItem(seed,300)
+    broken+=1 if broken>=3 then break end
+   end
+  end
+ end
+ local function announce(message)
+  for _,player in Players:GetPlayers() do player:SetAttribute("WinterMessage",message) end
+ end
+ function state.step(seconds)
+  state.elapsed+=seconds
+  if not state.active and state.elapsed>=150 then
+   state.active=true state.elapsed=0 state.cycle+=1
+   workspace:SetAttribute("BlizzardActive",true)
+   announce("Надвигается снежная буря! Через 10 секунд станет опасно. Настя ждёт в двухэтажном доме у леса!")
+   breakTrees()
+  elseif state.active and state.elapsed>=90 then
+   state.active=false state.elapsed=0 workspace:SetAttribute("BlizzardActive",false)
+   announce("Буря закончилась! Можно гулять и восстанавливать лес: ищите саженцы возле сломанных деревьев.")
+  end
+  for _,player in Players:GetPlayers() do
+   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   local safe=root and sheltered(root.Position) or false
+   player:SetAttribute("StormSheltered",safe)
+   if state.active and state.elapsed>=10 and root and humanoid and humanoid.Health>0 and not safe then humanoid:TakeDamage(4*seconds) end
+  end
+ end
+ workspace:SetAttribute("BlizzardActive",false)
+ local beacon=build("Дом Насти — укрытие от бури",Vector3.new(2,5,2),Vector3.new(0,3,25),gold)
+ sign(beacon,"Двухэтажный дом Насти\nМакарошки • укрытие от бури",Vector3.new(0,5,0))
+ local direction=part("Указатель к Насте",Vector3.new(2,4,2),Vector3.new(24,2,46),gold)
+ sign(direction,"Дом мамы Насти →\nУ леса: справа и вперёд от ёлки",Vector3.new(0,5,0))
+ task.spawn(function() while world.Parent do task.wait(1) state.step(1) end end)
+ return state
+end
+local stormState=setupBlizzard()
 ]]></string>
       </Properties>
     </Item>
@@ -2441,6 +2599,11 @@ task.spawn(function()
     or (math.abs(pos.X-58)<15 and math.abs(pos.Z+40)<14 and pos.Y<24)
     or (math.abs(pos.X+130)<15 and math.abs(pos.Z+100)<14 and pos.Y<24)
     or (math.abs(pos.X+40)<15 and math.abs(pos.Z-125)<14 and pos.Y<24)
+   indoors=indoors or (math.abs(pos.X-155)<20.5 and math.abs(pos.Z+340)<18.5 and pos.Y<26)
+   local storm=workspace:GetAttribute("BlizzardActive")
+   flakes.Rate=storm and 850 or 240
+   flakes.Speed=storm and NumberRange.new(25,38) or NumberRange.new(5,8)
+   flakes.Acceleration=storm and Vector3.new(35,-8,12) or Vector3.new(1,-1,0)
    if indoors and flakes.Enabled then flakes:Clear() end
    flakes.Enabled=not indoors
   end

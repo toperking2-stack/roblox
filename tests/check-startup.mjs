@@ -47,6 +47,44 @@ end
 local function count(name)
  local n=0 for _,o in objects do if o.Name==name then n+=1 end end return n
 end
+local function checkStorm()
+ humanoid.MaxHealth=100
+ assert(stormState.sheltered(Vector3.new(155,5,-340)),'Nastya ground floor shelter')
+ assert(stormState.sheltered(Vector3.new(155,18,-340)),'Nastya second floor shelter')
+ assert(not stormState.sheltered(Vector3.new(155,35,-340)),'roof is exposed')
+ root.Position=Vector3.new(0,4,50)
+ stormState.step(150)
+ assert(workspace:GetAttribute('BlizzardActive'),'storm starts')
+ local before=humanoid.Health
+ stormState.step(5)
+ assert(humanoid.Health==before,'warning grace period')
+ stormState.step(5)
+ assert(humanoid.Health<before,'storm damages outside')
+ root.Position=Vector3.new(155,5,-340)
+ before=humanoid.Health stormState.step(1)
+ assert(humanoid.Health==before,'indoors prevents storm damage')
+ interact(named('Настя'))
+ local pasta=assert(backpack:FindFirstChild('Макарошки'),'Nastya cooks pasta')
+ pasta.Parent=character pasta.Activated:Fire()
+ assert(humanoid.Health>before,'eating restores health')
+ pasta.Parent=backpack
+ interact(named('Саженец ёлки'))
+ assert(player:GetAttribute('FirSaplings')==1,'collect storm sapling')
+ local seedTool=assert(backpack:FindFirstChild('Посадить ёлочку')) seedTool.Parent=character
+ root.Position=Vector3.new(155,5,-340) seedTool.Activated:Fire()
+ assert(player:GetAttribute('FirSaplings')==1,'cannot plant inside house')
+ for px=-300,250,25 do
+  if stormState.planted>0 then break end
+  root.Position=Vector3.new(px,3,-280) seedTool.Activated:Fire()
+ end
+ assert(stormState.planted==1 and player:GetAttribute('FirSaplings')==0,'plant consumes seed once')
+ seedTool.Activated:Fire() assert(stormState.planted==1,'empty inventory cannot plant')
+ seedTool.Parent=backpack
+ stormState.step(79)
+ assert(not workspace:GetAttribute('BlizzardActive'),'storm ends after ninety seconds')
+ humanoid.Health=100
+end
+checkStorm()
 -- Distance validation rejects a remote prompt activation across the map.
 root.Position=Vector3.new(190,3,170)
 local pile=named('Гора снежков')
