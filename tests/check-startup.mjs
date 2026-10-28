@@ -156,6 +156,42 @@ local function checkStorm()
  humanoid.Health=100
 end
 checkStorm()
+local function checkSnowDrifts()
+ local savedElapsed=stormState.elapsed
+ local door=stormState.doors[6]
+ local pile=stormState.piles[16]
+ assert(pile.door==door,'lemon house has shared snow piles')
+ stormState.active=true stormState.elapsed=20
+ door.panel:SetAttribute('Open',false)
+ local before=pile.amount stormState.accumulate(10)
+ assert(pile.amount==before,'closed door prevents accumulation')
+ door.panel:SetAttribute('Open',true)
+ stormState.accumulate(40)
+ assert(pile.amount>before and pile.snow.CanCollide,'open door builds collidable snow drift')
+ stormState.active=false
+ stormState.giveShovel(player)
+ local shovel=assert(backpack:FindFirstChild('Лопата')) shovel.Parent=character
+ root.Position=pile.base+Vector3.new(0,2,5)
+ before=pile.amount shovel.Activated:Fire()
+ assert(pile.amount==before-2.5,'player digs from outside')
+ shovel.Activated:Fire() assert(pile.amount==before-2.5,'shovel cooldown blocks repeated instant clicks')
+ local friend=Instance.new('Player') friend.Name,friend.UserId,friend.Parent='RescueFriend',456,services.Players
+ local body=Instance.new('Model') body.Parent=workspace friend.Character=body
+ local friendRoot=Instance.new('Part') friendRoot.Name,friendRoot.Position,friendRoot.Parent='HumanoidRootPart',root.Position,body
+ local friendHumanoid=Instance.new('Humanoid') friendHumanoid.Health,friendHumanoid.Parent=100,body
+ local pack=Instance.new('Backpack') pack.Name,pack.Parent='Backpack',friend friend.Backpack=pack
+ stormState.giveShovel(friend)
+ local friendShovel=pack:FindFirstChild('Лопата') friendShovel.Parent=body
+ before=pile.amount friendShovel.Activated:Fire()
+ assert(pile.amount==math.max(0,before-2.5),'second player clears same shared drift')
+ root.Position=Vector3.new(0,4,50) advance(0.7)
+ before=pile.amount shovel.Activated:Fire()
+ assert(pile.amount==before,'cannot dig distant snow')
+ services.Players.PlayerRemoving:Fire(friend) friend.Parent=nil body:Destroy()
+ shovel.Parent=backpack door.panel:SetAttribute('Open',false)
+ stormState.elapsed=savedElapsed
+end
+checkSnowDrifts()
 -- Distance validation rejects a remote prompt activation across the map.
 root.Position=Vector3.new(190,3,170)
 local pile=named('Гора снежков')

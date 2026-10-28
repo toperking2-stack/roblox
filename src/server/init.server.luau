@@ -2196,6 +2196,7 @@ local function setupBlizzard()
  end
  state.sheltered=sheltered
  local function setupDoors()
+
   local doors={}
   local entrances={}
   for _,center in houseCenters do table.insert(entrances,{center[1],center[2]+13,8,8,2.2}) end
@@ -2224,11 +2225,88 @@ local function setupBlizzard()
    -- A stationary jamb keeps the control reachable with the panel slid aside.
    local control=part("Ручка у входа "..index,Vector3.new(0.35,0.5,0.5),closed+Vector3.new(entry[3]/2+0.5,-0.5,0.8),gold)
    prompt(control,"Открыть / закрыть дверь",toggle)
-   table.insert(doors,{panel=door,control=control})
+   table.insert(doors,{panel=door,control=control,entrance=closed,width=entry[3],height=entry[4],floor=entry[5]})
   end
   state.doors=doors
  end
  setupDoors()
+
+ local function setupSnowDrifts()
+  local piles={}
+  local cooldown={}
+  local function updatePile(pile)
+   local height=math.max(0.1,pile.amount)
+   pile.snow.Size=Vector3.new(pile.width,height,pile.depth)
+   pile.snow.Position=pile.base+Vector3.new(0,height/2,0)
+   pile.snow.Transparency=pile.amount>0 and 0 or 1
+   pile.snow.CanCollide=pile.amount>=0.5
+   pile.snow:SetAttribute("SnowDepth",pile.amount)
+  end
+  for index,door in state.doors do
+   for layer=1,3 do
+    local offset=layer==1 and 2.5 or (layer==2 and -2.5 or -7)
+    local base=Vector3.new(door.entrance.X,door.floor,door.entrance.Z+offset)
+    local snowPart=part("Снежный завал "..index.." / "..layer,Vector3.new(door.width,0.1,4),base,snow,Enum.Material.Snow)
+    local pile={snow=snowPart,base=base,width=door.width+(layer==3 and 4 or 0),depth=4.5,amount=0,door=door,layer=layer}
+    updatePile(pile) table.insert(piles,pile)
+   end
+  end
+  local function giveShovel(player)
+   if player.Backpack:FindFirstChild("Лопата") or player.Character:FindFirstChild("Лопата") then
+    player:SetAttribute("WinterMessage","Лопата уже у тебя — выбери её и нажимай рядом с завалом") return
+   end
+   local tool=Instance.new("Tool") tool.Name="Лопата" tool.RequiresHandle=true
+   local handle=part("Handle",Vector3.new(0.22,3.6,0.22),Vector3.zero,wood,Enum.Material.Wood,tool)
+   handle.Anchored,handle.CanCollide,handle.Massless=false,false,true
+   local blade=part("Совок лопаты",Vector3.new(1.9,1.6,0.25),Vector3.new(0,-2.1,0),Color3.fromRGB(126,169,191),Enum.Material.Metal,tool)
+   blade.Anchored,blade.CanCollide,blade.Massless=false,false,true
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=handle,blade,handle
+   tool.Activated:Connect(function()
+    local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if tool.Parent~=player.Character or not root or not humanoid or humanoid.Health<=0 or os.clock()-(cooldown[player] or -10)<0.6 then return end
+    cooldown[player]=os.clock()
+    local closest,distance=nil,13
+    for _,pile in piles do
+     local delta=root.Position-pile.snow.Position
+     local range=delta.Magnitude
+     if pile.amount>0 and range<distance then closest,distance=pile,range end
+    end
+    if not closest then player:SetAttribute("WinterMessage","Подойди к снегу у входа или внутри дома") return end
+    closest.amount=math.max(0,closest.amount-2.5) updatePile(closest)
+    tool.Grip=CFrame.new(0,-0.5,0)*CFrame.Angles(-0.9,0,0)
+    local burst=Instance.new("ParticleEmitter") burst.Texture="rbxasset://textures/particles/sparkles_main.dds"
+    burst.Rate=0 burst.Lifetime=NumberRange.new(0.3,0.6) burst.Speed=NumberRange.new(5,10)
+    burst.Size=NumberSequence.new(0.25) burst.Parent=closest.snow burst:Emit(18) Debris:AddItem(burst,1)
+    task.delay(0.25,function() if tool.Parent then tool.Grip=CFrame.new() end end)
+    player:SetAttribute("WinterMessage",closest.amount==0 and "Этот участок расчищен! Можно откопать остальные и помочь другу" or "Снега стало меньше! Продолжай копать — вместе быстрее")
+   end)
+   tool.Parent=player.Backpack
+   player:SetAttribute("WinterMessage","Лопата получена! Выбери и нажимай возле завала. Откапывать можно с обеих сторон")
+  end
+  for index,door in state.doors do
+   for _,side in {-1,1} do
+    local rack=part("Лопата у дома "..index.." / "..side,Vector3.new(0.4,3.6,0.4),Vector3.new(door.entrance.X+door.width/2+3,door.floor+2,door.entrance.Z+side*7),wood,Enum.Material.Wood)
+    part("Лезвие запасной лопаты",Vector3.new(1.8,1.5,0.2),rack.Position-Vector3.new(0,1.2,0),Color3.fromRGB(126,169,191),Enum.Material.Metal,rack)
+    prompt(rack,"Взять лопату",giveShovel)
+   end
+  end
+  local rack=part("Лопата на спавне",Vector3.new(0.4,4,0.4),Vector3.new(14,2,50),gold)
+  prompt(rack,"Взять лопату",giveShovel)
+  function state.accumulate(seconds)
+   if not state.active or state.elapsed<10 then return end
+   for _,pile in piles do
+    if pile.door.panel:GetAttribute("Open") then
+     local rate=pile.layer==1 and 0.2 or (pile.layer==2 and 0.15 or 0.09)
+     pile.amount=math.min(pile.door.height, pile.amount+seconds*rate)
+     updatePile(pile)
+    end
+   end
+  end
+  state.piles=piles state.giveShovel=giveShovel
+  Players.PlayerRemoving:Connect(function(player) cooldown[player]=nil end)
+ end
+ setupSnowDrifts()
 
  prompt(body,"Попросить макарошки",function(player)
   player:SetAttribute("WinterMessage",state.active and "Настя: Буря снаружи! Садись, кушай макарошки и оставайся до её конца." or "Настя: Заходи, я приготовила макарошки! Здесь всегда можно отдохнуть.")
@@ -2342,6 +2420,7 @@ local function setupBlizzard()
    state.active=false state.elapsed=0 workspace:SetAttribute("BlizzardActive",false)
    announce("Буря закончилась! Можно гулять и восстанавливать лес: ищите саженцы возле сломанных деревьев.")
   end
+  state.accumulate(seconds)
   local remaining=math.max(0,math.ceil((state.active and 90 or 150)-state.elapsed))
   workspace:SetAttribute("StormForecast",(state.active and "Буря идёт! До конца: " or "До снежной бури: ")..math.floor(remaining/60).." мин "..(remaining%60).." сек")
   for _,player in Players:GetPlayers() do
