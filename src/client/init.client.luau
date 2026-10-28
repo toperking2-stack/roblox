@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v9 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v12 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -536,3 +536,51 @@ local function setupFlightControls()
  refresh()
 end
 setupFlightControls()
+
+local function setupPhoneAndWeatherHUD()
+ local timer=Instance.new("TextLabel") timer.Name="Таймер бури"
+ timer.Size,timer.Position=UDim2.new(0,330,0,40),UDim2.new(0,16,1,-166)
+ timer.BackgroundColor3,timer.BackgroundTransparency=Color3.fromRGB(24,47,65),0.1
+ timer.TextColor3,timer.TextSize,timer.TextWrapped=Color3.fromRGB(255,230,150),16,true timer.Parent=gui
+ local function forecast() timer.Text=workspace:GetAttribute("StormForecast") or "Прогноз погоды загружается…" end
+ workspace:GetAttributeChangedSignal("StormForecast"):Connect(forecast) forecast()
+ local panel=Instance.new("Frame") panel.Name="Телефонная книга" panel.Size=UDim2.new(0.9,0,0.8,0)
+ panel.Position,panel.AnchorPoint=UDim2.fromScale(0.5,0.5),Vector2.new(0.5,0.5)
+ panel.BackgroundColor3=Color3.fromRGB(24,39,58) panel.Visible=false panel.Parent=gui
+ local limit=Instance.new("UISizeConstraint") limit.MaxSize=Vector2.new(440,570) limit.Parent=panel
+ local title=Instance.new("TextLabel") title.Size=UDim2.new(1,-20,0,80) title.Position=UDim2.fromOffset(10,4)
+ title.TextColor3=Color3.new(1,1,1) title.BackgroundTransparency=1 title.TextSize=16 title.TextWrapped=true title.Parent=panel
+ local scroll=Instance.new("ScrollingFrame") scroll.Size=UDim2.new(1,-20,1,-100) scroll.Position=UDim2.fromOffset(10,90)
+ scroll.BackgroundTransparency=1 scroll.ScrollBarThickness=6 scroll.Parent=panel
+ local remote=ReplicatedStorage:WaitForChild("WinterPhoneAction")
+ local function render()
+  panel.Visible=player:GetAttribute("PhoneOpen")==true
+  title.Text="ТЕЛЕФОН • "..(player:GetAttribute("PhonePeer") or "Контакты").."\n"..(player:GetAttribute("PhoneLine") or "Звонки с игровыми репликами")
+  for _,item in scroll:GetChildren() do item:Destroy() end
+  local row=0
+  local function button(text,callback)
+   local item=Instance.new("TextButton") item.Size=UDim2.new(1,-8,0,38) item.Position=UDim2.fromOffset(0,row*44)
+   item.Text,item.TextSize,item.TextWrapped=text,15,true item.BackgroundColor3=Color3.fromRGB(55,92,111) item.TextColor3=Color3.new(1,1,1)
+   item.Parent=scroll item.Activated:Connect(callback) row+=1
+  end
+  local status=player:GetAttribute("PhoneState")
+  if status=="incoming" then button("Ответить",function() remote:FireServer("accept") end) end
+  if status=="active" then
+   for index,text in {"Привет! Как дела?","Приходи к Леону смотреть котиков!","Идём купаться в лимонах!","Скоро буря — заходи в дом!","Встретимся у ёлки!"} do
+    button(text,function() remote:FireServer("say",index) end)
+   end
+  elseif status~="incoming" and status~="calling" then
+   for _,name in {"Леон","Настя"} do button("Позвонить: "..name,function() remote:FireServer("call",name) end) end
+   for _,other in Players:GetPlayers() do
+    if other~=player then button("Позвонить: "..other.Name,function() remote:FireServer("call",other.UserId) end) end
+   end
+  end
+  if status=="active" or status=="incoming" or status=="calling" then button("Завершить / отклонить",function() remote:FireServer("hangup") end) end
+  button("Обновить контакты",function() render() end)
+  button("Закрыть телефон",function() remote:FireServer("close") end)
+  scroll.CanvasSize=UDim2.fromOffset(0,row*44)
+ end
+ for _,key in {"PhoneOpen","PhoneState","PhonePeer","PhoneLine"} do player:GetAttributeChangedSignal(key):Connect(render) end
+ render()
+end
+setupPhoneAndWeatherHUD()

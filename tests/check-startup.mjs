@@ -47,6 +47,39 @@ end
 local function count(name)
  local n=0 for _,o in objects do if o.Name==name then n+=1 end end return n
 end
+local function checkPhones()
+ local roof=named('Сплошная крыша дома Леона')
+ assert(roof.Size.X>=58 and roof.Size.Z>=50,'solid roof covers Leon house')
+ interact(named('Телефон из подарка'))
+ assert(backpack:FindFirstChild('Телефон'),'gift gives usable phone')
+ local other=Instance.new('Player') other.Name,other.UserId,other.Parent='PhoneFriend',123,services.Players
+ local otherCharacter=Instance.new('Model') otherCharacter.Parent=workspace other.Character=otherCharacter
+ local otherRoot=Instance.new('Part') otherRoot.Name,otherRoot.Parent='HumanoidRootPart',otherCharacter
+ local otherHumanoid=Instance.new('Humanoid') otherHumanoid.Health,otherHumanoid.Parent=100,otherCharacter
+ local otherPack=Instance.new('Backpack') otherPack.Name,otherPack.Parent='Backpack',other other.Backpack=otherPack
+ phoneState.give(other)
+ local action=phoneState.remote
+ action.OnServerEvent:Fire(player,'call',other.UserId)
+ assert(player:GetAttribute('PhoneState')=='calling' and other:GetAttribute('PhoneState')=='incoming','two player call rings recipient')
+ action.OnServerEvent:Fire(other,'accept')
+ assert(player:GetAttribute('PhoneState')=='active' and other:GetAttribute('PhoneState')=='active','recipient accepts')
+ advance(0.3) action.OnServerEvent:Fire(player,'say',2)
+ assert(string.find(other:GetAttribute('PhoneLine'),'котиков'),'call delivers selected phrase')
+ action.OnServerEvent:Fire(player,'hangup')
+ assert(not phoneState.calls[player] and not phoneState.calls[other],'hangup clears both sides')
+ advance(0.3) action.OnServerEvent:Fire(player,'call','Настя')
+ assert(string.find(player:GetAttribute('PhoneLine'),'Макарошки'),'Nastya answers phone')
+ action.OnServerEvent:Fire(player,'hangup')
+ advance(0.3) action.OnServerEvent:Fire(player,'call',other.UserId)
+ otherHumanoid.Health=0 services.RunService.Heartbeat:Fire(0.1)
+ assert(not phoneState.calls[player] and not phoneState.calls[other],'death cleans pending call')
+ interact(named('Леон'),'Подарить телефон')
+ assert(not backpack:FindFirstChild('Телефон') and named('Леон'):GetAttribute('HasMobilePhone'),'phone can be gifted to Leon')
+ interact(named('Телефон у Насти'))
+ assert(backpack:FindFirstChild('Телефон'),'can get replacement phone')
+ services.Players.PlayerRemoving:Fire(other) other.Parent=nil otherCharacter:Destroy()
+end
+checkPhones()
 local function checkStorm()
  humanoid.MaxHealth=100
  assert(#stormState.doors==6,'all six houses have doors')
@@ -465,6 +498,18 @@ humanoid.RigType=Enum.HumanoidRigType.R15
 humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.MoveDirection=16,true,Vector3.new(1,0,0)
 `;
  const clientChecks=`
+workspace:SetAttribute('StormForecast','До снежной бури: 1 мин 12 сек')
+assert(named('Таймер бури').Text=='До снежной бури: 1 мин 12 сек','bottom left countdown follows server forecast')
+phoneState.remote.OnServerEvent:Fire(player,'close')
+local phoneTool=assert(backpack:FindFirstChild('Телефон'))
+phoneTool.Parent=character phoneTool.Activated:Fire()
+assert(named('Телефонная книга').Visible,'phone tool opens contacts UI')
+phoneState.remote.OnServerEvent:Fire(player,'close')
+assert(not named('Телефонная книга').Visible,'phone closes through server')
+phoneTool.Activated:Fire()
+assert(named('Телефонная книга').Visible,'phone can reopen after closing')
+phoneState.remote.OnServerEvent:Fire(player,'close') phoneTool.Parent=backpack
+
 advance(2)
 local before=count('Летящий снежок')
 tool.Parent=character

@@ -2371,9 +2371,10 @@ local function setupBlizzard()
    window.Transparency=0.35
   end
   piece("Над дверью лимонного дома",Vector3.new(14,14,1),Vector3.new(0,22,25))
-  local roof=round("Крыша — огромный лимон",Vector3.new(66,18,58),center+Vector3.new(0,33,0),yellow,world)
+  piece("Сплошная крыша дома Леона",Vector3.new(62,1.5,54),Vector3.new(0,29.7,0),yellow)
+  local roof=round("Крыша — огромный лимон",Vector3.new(66,18,58),center+Vector3.new(0,38.5,0),yellow,world)
   roof.CanCollide=true
-  rod("Листик лимонного дома",center+Vector3.new(0,41,0),center+Vector3.new(12,46,0),1.5,green)
+  rod("Листик лимонного дома",center+Vector3.new(0,47,0),center+Vector3.new(12,52,0),1.5,green)
   piece("Ковёр лимонного дома",Vector3.new(38,0.15,30),Vector3.new(0,1.7,0),green,Enum.Material.Fabric)
   piece("Лимонный диван",Vector3.new(20,2,5),Vector3.new(0,3,10),gold,Enum.Material.Fabric)
   piece("Спинка лимонного дивана",Vector3.new(20,5,1),Vector3.new(0,5,13),yellow,Enum.Material.Fabric)
@@ -2486,3 +2487,105 @@ local function setupBlizzard()
  return state
 end
 local stormState=setupBlizzard()
+
+local function setupWinterPhones()
+ local remote=Instance.new("RemoteEvent") remote.Name="WinterPhoneAction" remote.Parent=ReplicatedStorage
+ local calls,lastAction={},{}
+ local phrases={"Привет! Как дела?","Приходи к Леону смотреть котиков!","Идём купаться в лимонах!","Скоро буря — заходи в дом!","Встретимся у ёлки!"}
+ local function message(player,text) player:SetAttribute("PhoneLine",text) end
+ local function hasPhone(player)
+  return player.Character and (player.Character:FindFirstChild("Телефон") or (player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Телефон")))
+ end
+ local function clear(player,line)
+  local call=calls[player] if not call then return end
+  calls[player]=nil player:SetAttribute("PhoneState","idle") player:SetAttribute("PhonePeer",nil) player:SetAttribute("PhoneIncoming",nil)
+  message(player,line or "Звонок завершён")
+  local peer=call.a==player and call.b or call.a
+  if type(peer)~="string" and peer and calls[peer]==call then
+   calls[peer]=nil peer:SetAttribute("PhoneState","idle") peer:SetAttribute("PhonePeer",nil) peer:SetAttribute("PhoneIncoming",nil)
+   message(peer,line or "Собеседник завершил звонок")
+  end
+ end
+ local function give(player)
+  if hasPhone(player) then player:SetAttribute("WinterMessage","Телефон уже у тебя: выбери его и нажми, чтобы открыть контакты") return end
+  local tool=Instance.new("Tool") tool.Name="Телефон" tool.RequiresHandle=true
+  local handle=part("Handle",Vector3.new(0.8,1.4,0.16),Vector3.zero,Color3.fromRGB(37,46,67),Enum.Material.Metal,tool)
+  handle.Anchored,handle.CanCollide,handle.Massless=false,false,true
+  local display=part("Экран телефона",Vector3.new(0.67,1.1,0.03),Vector3.new(0,0,0.1),Color3.fromRGB(101,210,170),Enum.Material.Neon,tool)
+  display.Anchored,display.CanCollide,display.Massless=false,false,true
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=handle,display,handle
+  tool.Activated:Connect(function() if tool.Parent==player.Character then player:SetAttribute("PhoneOpen",not player:GetAttribute("PhoneOpen")) end end)
+  tool.Parent=player:FindFirstChild("Backpack")
+  player:SetAttribute("WinterMessage","Телефон получен! Выбери его и нажми — контакты, звонки и сообщения")
+ end
+ local function station(name,position)
+  local tableTop=part(name,Vector3.new(2,0.35,3),position,Color3.fromRGB(39,63,81),Enum.Material.Metal)
+  part("Трубка домашнего телефона",Vector3.new(1.5,0.35,0.7),position+Vector3.new(0,0.3,0.5),gold,nil,tableTop)
+  prompt(tableTop,"Взять телефон",give)
+ end
+ station("Телефон у Насти",Vector3.new(151,4.6,-336))
+ station("Телефон у Леона",Vector3.new(245,4,-335))
+ station("Телефон из подарка",Vector3.new(96,8.5,-292))
+ for _,item in world:GetDescendants() do
+  if item.Name=="Леон" and item:IsA("BasePart") then
+   prompt(item,"Подарить телефон",function(player)
+    local tool=hasPhone(player)
+    if not tool then player:SetAttribute("WinterMessage","Возьми телефон в подарке или дома") return end
+    clear(player) tool:Destroy() player:SetAttribute("PhoneOpen",false)
+    item:SetAttribute("HasMobilePhone",true)
+    player:SetAttribute("WinterMessage","Леон: Спасибо за телефон! Возьми себе ещё один — будем созваниваться!")
+   end,"F")
+   break
+  end
+ end
+ remote.OnServerEvent:Connect(function(player,action,target)
+  if type(action)~="string" then return end
+  if action=="close" then player:SetAttribute("PhoneOpen",false) return end
+  if action=="hangup" then clear(player) return end
+  if not hasPhone(player) then return end
+  if os.clock()-(lastAction[player] or -10)<0.25 then return end lastAction[player]=os.clock()
+  if action=="call" then
+   if calls[player] then return end
+   local peer
+   if target=="Леон" or target=="Настя" then peer=target
+   elseif type(target)=="number" then
+    for _,other in Players:GetPlayers() do if other.UserId==target and other~=player then peer=other break end end
+    if not peer or not hasPhone(peer) then message(player,"У этого игрока пока нет телефона") return end
+    if calls[peer] then message(player,"Абонент занят") return end
+   else return end
+   local call={a=player,b=peer,active=type(peer)=="string"} calls[player]=call
+   player:SetAttribute("PhonePeer",type(peer)=="string" and peer or peer.Name)
+   player:SetAttribute("PhoneState",call.active and "active" or "calling") player:SetAttribute("PhoneOpen",true)
+   if type(peer)=="string" then
+    message(player,peer=="Леон" and "Леон: Привет! Приходи смотреть котиков и купаться в лимонах!" or "Настя: Привет! Макарошки готовы, заходи погреться!")
+   else
+    calls[peer]=call peer:SetAttribute("PhoneState","incoming") peer:SetAttribute("PhoneIncoming",player.UserId)
+    peer:SetAttribute("PhonePeer",player.Name) peer:SetAttribute("PhoneOpen",true)
+    message(peer,"Входящий звонок от "..player.Name) message(player,"Вызываем "..peer.Name.."…")
+    task.delay(20,function() if calls[player]==call and not call.active then clear(player,"Нет ответа") end end)
+   end
+  elseif action=="accept" then
+   local call=calls[player]
+   if not call or call.b~=player or call.active then return end
+   if not hasPhone(call.a) then clear(player) return end
+   call.active=true
+   for _,person in {call.a,call.b} do person:SetAttribute("PhoneState","active") person:SetAttribute("PhoneIncoming",nil) message(person,"На связи! Выбери реплику ниже") end
+  elseif action=="say" then
+   local call=calls[player]
+   if not call or not call.active or type(target)~="number" or not phrases[target] then return end
+   local peer=call.a==player and call.b or call.a
+   message(player,"Ты: "..phrases[target])
+   if type(peer)=="string" then message(player,peer..(peer=="Леон" and ": Отличная идея! Буду ждать тебя дома." or ": Хорошо! Береги себя и приходи на чай."))
+   else message(peer,player.Name..": "..phrases[target]) end
+  end
+ end)
+ RunService.Heartbeat:Connect(function()
+  for player,call in calls do
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if not hasPhone(player) or not humanoid or humanoid.Health<=0 then clear(player,"Связь прервана") end
+  end
+ end)
+ Players.PlayerRemoving:Connect(function(player) clear(player,"Абонент вышел из игры") lastAction[player]=nil end)
+ return {calls=calls,give=give,remote=remote}
+end
+local phoneState=setupWinterPhones()
