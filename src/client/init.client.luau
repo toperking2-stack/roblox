@@ -24,7 +24,7 @@ local function update()
  for _,name in {"Палочки","Морковка","Ведёрко"} do
   if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
  end
- label.Text="❄ ЗИМНИЙ ПАРК • v13.4 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ label.Text="❄ ЗИМНИЙ ПАРК • v14 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
  if #found>0 then label.Text..="\n"..table.concat(found," • ") end
  if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
 end
@@ -236,7 +236,7 @@ end
 local function characterAdded(character)
  local function bind(child)
   if not child:IsA("Tool") or boundTools[child] then return end
-  if child.Name~="Снежки" and child.Name~="Горячий чай" and child.Name~="Морковка для оленя" then return end
+  if child.Name~="Снежки" and child.Name~="Горячий чай" and child.Name~="Морковка для оленя" and child.Name~="Космический бластер" then return end
   boundTools[child]=true
   local last=0
   local originalGrip=child.Grip
@@ -256,6 +256,9 @@ local function characterAdded(character)
    -- Gameplay is sent BEFORE optional arm/sound effects; an animation error cannot block throwing.
    if feeding then
     ReplicatedStorage:WaitForChild("CarrotAction"):FireServer("feed")
+   elseif child.Name=="Космический бластер" then
+    local target=aimPoint(character)
+    if target then ReplicatedStorage:WaitForChild("SpaceAdventureAction"):FireServer("shoot",target) end
    elseif not tea then
     local target=aimPoint(character)
     if target then ReplicatedStorage:WaitForChild("ThrowSnowball"):FireServer(target) end
@@ -348,6 +351,7 @@ task.spawn(function()
     or (math.abs(pos.X+40)<15 and math.abs(pos.Z-125)<14 and pos.Y<24)
    indoors=indoors or (math.abs(pos.X-155)<20.5 and math.abs(pos.Z+340)<18.5 and pos.Y<26)
    indoors=indoors or (math.abs(pos.X-235)<28 and math.abs(pos.Z+345)<24 and pos.Y<31)
+   indoors=indoors or pos.Y>1500
    local storm=workspace:GetAttribute("BlizzardActive")
    flakes.Rate=storm and 850 or 240
    flakes.Speed=storm and NumberRange.new(25,38) or NumberRange.new(5,8)
@@ -601,3 +605,40 @@ local function setupLeonCountdown()
  refresh()
 end
 setupLeonCountdown()
+
+local function setupSpaceControls()
+ local remote=ReplicatedStorage:WaitForChild("SpaceAdventureAction")
+ local status=Instance.new("TextLabel") status.Name="Космическая игра"
+ status.Size,status.Position=UDim2.new(0,300,0,50),UDim2.new(0.5,-150,0,65)
+ status.BackgroundColor3=Color3.fromRGB(26,35,66) status.TextColor3=Color3.fromRGB(130,239,255) status.TextWrapped=true status.TextSize=16 status.Parent=gui
+ local function refresh()
+  local score=player:GetAttribute("SpaceScore")
+  status.Visible=score~=nil or player:GetAttribute("SpaceFlight")==true
+  status.Text=player:GetAttribute("SpaceFlight") and "🚀 Летим на космическую станцию!" or ("Лазерная игра: "..tostring(score or 0).." / 5 • приз: капибара")
+ end
+ player:GetAttributeChangedSignal("SpaceScore"):Connect(refresh) player:GetAttributeChangedSignal("SpaceFlight"):Connect(refresh) refresh()
+ local touch={}
+ for i,spec in {{"←",-1,0},{"↑",0,-1},{"↓",0,1},{"→",1,0}} do
+  local button=Instance.new("TextButton") button.Size=UDim2.fromOffset(48,44) button.Position=UDim2.new(0,16+(i-1)*54,1,-230)
+  button.Text,button.TextSize=spec[1],26 button.Parent=gui
+  local function visible() button.Visible=UserInputService.TouchEnabled and player:GetAttribute("CapybaraRiding")==true end
+  player:GetAttributeChangedSignal("CapybaraRiding"):Connect(visible) visible()
+  button.MouseButton1Down:Connect(function() touch[i]=true end) button.MouseButton1Up:Connect(function() touch[i]=nil end)
+ end
+ local exit=Instance.new("TextButton") exit.Size=UDim2.fromOffset(150,40) exit.Position=UDim2.new(1,-166,1,-220) exit.Text="Слезть с капибары" exit.Parent=gui
+ local function refreshRide() exit.Visible=player:GetAttribute("CapybaraRiding")==true end
+ player:GetAttributeChangedSignal("CapybaraRiding"):Connect(refreshRide) refreshRide()
+ exit.Activated:Connect(function() remote:FireServer("dismount") end)
+ UserInputService.JumpRequest:Connect(function() if player:GetAttribute("CapybaraRiding") then remote:FireServer("dismount") end end)
+ local elapsed=0
+ RunService.Heartbeat:Connect(function(dt)
+  elapsed+=dt if elapsed<0.1 or not player:GetAttribute("CapybaraRiding") then return end elapsed=0
+  local x=(UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0)-(UserInputService:IsKeyDown(Enum.KeyCode.A) and 1 or 0)+(touch[4] and 1 or 0)-(touch[1] and 1 or 0)
+  local z=(UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0)-(UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0)+(touch[3] and 1 or 0)-(touch[2] and 1 or 0)
+  local camera=workspace.CurrentCamera
+  local forward=camera and Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z) or Vector3.new(0,0,-1)
+  if forward.Magnitude<0.1 then forward=Vector3.new(0,0,-1) else forward=forward.Unit end
+  remote:FireServer("ride",Vector3.new(-forward.Z,0,forward.X)*x-forward*z)
+ end)
+end
+setupSpaceControls()

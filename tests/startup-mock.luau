@@ -92,6 +92,9 @@ end
 function methods:IsA(class)
  return self.ClassName==class or (class=='BasePart' and (self.ClassName=='Part' or self.ClassName=='Seat' or self.ClassName=='SpawnLocation'))
 end
+function methods:IsDescendantOf(ancestor)
+ local parent=self.Parent while parent do if parent==ancestor then return true end parent=parent.Parent end return false
+end
 function methods:GetPivot() return self.PrimaryPart and self.PrimaryPart.CFrame or CFrame.new() end
 function methods:PivotTo(frame)
  local old=self:GetPivot().Position

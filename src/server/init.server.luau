@@ -2188,6 +2188,7 @@ local function setupBlizzard()
  setupDad()
  local state={active=false,elapsed=0,cycle=0,planted=0,trees=forestTrees}
  local function sheltered(pos)
+  if pos.Y>1950 and math.abs(pos.X)<91 and math.abs(pos.Z)<91 then return true end
   if math.abs(pos.X-235)<28 and math.abs(pos.Z+345)<24 and pos.Y>0 and pos.Y<31 then return true end
   if math.abs(pos.X-x)<20.5 and math.abs(pos.Z-z)<18.5 and pos.Y>0 and pos.Y<26 then return true end
   for _,center in houseCenters do
@@ -2427,7 +2428,7 @@ local function setupBlizzard()
   for _,player in Players:GetPlayers() do
    local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-   local safe=root and sheltered(root.Position) or false
+   local safe=(root and sheltered(root.Position)) or player:GetAttribute("SpaceFlight")==true
    player:SetAttribute("StormSheltered",safe)
    if state.active and state.elapsed>=10 and root and humanoid and humanoid.Health>0 and not safe then humanoid:TakeDamage(4*seconds) end
   end
@@ -2783,3 +2784,252 @@ local function setupCartoonSlime()
  return {effects=effects,apply=apply,clear=clear}
 end
 local slimeState=setupCartoonSlime()
+
+-- A separate arcade destination, with server-owned travel, targets and rewards.
+local function setupSpaceAdventure()
+ local action=Instance.new("RemoteEvent") action.Name="SpaceAdventureAction" action.Parent=ReplicatedStorage
+ local cyan=Color3.fromRGB(92,230,255)
+ local origin=Vector3.new(0,2000,0)
+ local pad=Vector3.new(90,0,300)
+ local sessions,aliens,rides,lastShot={},{},{},{}
+ local rocket=Instance.new("Model") rocket.Name="Большая космическая ракета" rocket.Parent=world
+ local hull=part("Корпус ракеты",Vector3.new(44,15,15),pad+Vector3.new(0,27,0),snow,Enum.Material.Metal,rocket)
+ hull.CanCollide=false hull.Shape=Enum.PartType.Cylinder hull.Orientation=Vector3.new(0,0,90) rocket.PrimaryPart=hull
+ round("Нос ракеты",Vector3.new(15,22,15),pad+Vector3.new(0,51,0),red,rocket)
+ for _,side in {-1,1} do
+  part("Крыло ракеты",Vector3.new(2,16,15),pad+Vector3.new(side*10,12,0),red,Enum.Material.Metal,rocket)
+  local engine=part("Сопло ракеты",Vector3.new(5,6,5),pad+Vector3.new(side*4,4,0),Color3.fromRGB(50,57,72),Enum.Material.Metal,rocket)
+  local fire=Instance.new("Fire") fire.Name="Ракетный огонь" fire.Size=10 fire.Heat=0 fire.Enabled=false fire.Parent=engine
+ end
+ for i=1,3 do
+  round("Иллюминатор ракеты",Vector3.new(4,4,0.6),pad+Vector3.new(0,23+i*7,7.5),cyan,rocket)
+ end
+ part("Стартовая площадка",Vector3.new(42,1,42),pad+Vector3.new(0,0.5,0),Color3.fromRGB(78,89,113),Enum.Material.Metal)
+ local seats={}
+ for i=1,4 do
+  local seat=Instance.new("Seat") seat.Name="Место в ракете "..i seat.Size=Vector3.new(2,1,2)
+  seat.Position=pad+Vector3.new((i%2==0 and -1 or 1)*3,10,math.floor((i-1)/2)*4-2)
+  seat.Anchored=true seat.Parent=rocket table.insert(seats,seat)
+ end
+ local platform=part("Космическая станция",Vector3.new(180,3,180),origin,Color3.fromRGB(60,70,96),Enum.Material.Metal)
+ for _,side in {-1,1} do
+  part("Ограждение станции",Vector3.new(180,8,1),origin+Vector3.new(0,5,side*90),cyan,Enum.Material.Neon)
+  part("Ограждение станции",Vector3.new(1,8,180),origin+Vector3.new(side*90,5,0),cyan,Enum.Material.Neon)
+ end
+ for i=1,12 do
+  local planet=round("Далёкая планета",Vector3.new(20+i%3*15,20+i%3*15,20+i%3*15),origin+Vector3.new(math.cos(i)*250,80+i*10,math.sin(i)*250),i%2==0 and cyan or gold)
+  planet.Material=Enum.Material.Neon
+ end
+ local function exitSeat(player,position)
+  local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid then return end
+  for _,seat in seats do if seat.Occupant==humanoid then local weld=seat:FindFirstChild("SeatWeld") if weld then weld:Destroy() end end end
+  humanoid.Sit=false character:PivotTo(CFrame.new(position))
+  local root=character:FindFirstChild("HumanoidRootPart") if root then root.AssemblyLinearVelocity=Vector3.zero end
+ end
+ local function giveBlaster(player)
+  if player.Backpack:FindFirstChild("Космический бластер") or player.Character:FindFirstChild("Космический бластер") then return end
+  local tool=Instance.new("Tool") tool.Name="Космический бластер" tool.RequiresHandle=true tool.CanBeDropped=false
+  local handle=part("Handle",Vector3.new(0.7,0.9,2),Vector3.zero,cyan,Enum.Material.Neon,tool)
+  handle.Anchored,handle.CanCollide,handle.CanQuery,handle.Massless=false,false,false,true tool.Parent=player.Backpack
+ end
+ local rocketSign=part("Указатель к ракете",Vector3.new(2,4,2),Vector3.new(30,2,55),cyan)
+ sign(rocketSign,"Ракета в космос →\nЗа парком: направо, затем к южному краю",Vector3.new(0,6,0))
+ local flying=false
+ local boarding=part("Посадка в ракету",Vector3.new(3,4,3),pad+Vector3.new(16,3,10),cyan,Enum.Material.Neon)
+ sign(boarding,"КОСМОС • 4 места\nE — сесть • F — взлететь",Vector3.new(0,7,0))
+ prompt(boarding,"Сесть в ракету",function(player)
+  if flying then player:SetAttribute("WinterMessage","Ракета в полёте, дождись возвращения") return end
+  local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 then return end
+  for _,seat in seats do
+   if seat.Occupant==humanoid then return end
+  end
+  for _,seat in seats do if not seat.Occupant then
+   exitSeat(player,seat.Position+Vector3.new(0,2,0)) seat:Sit(humanoid)
+   player:SetAttribute("WinterMessage","Ты в ракете! F у площадки запускает полёт; можно взять друзей") return
+  end end
+ end)
+ local function launch(player)
+  if flying then return end
+  local passengers={}
+  for _,seat in seats do
+   local occupant=seat.Occupant
+   local person=occupant and Players:GetPlayerFromCharacter(occupant.Parent)
+   if person then table.insert(passengers,person) end
+  end
+  if not table.find(passengers,player) then return end
+  flying=true local home=rocket:GetPivot()
+  for _,person in passengers do sessions[person]={score=0,travel=true} person:SetAttribute("SpaceFlight",true) end
+  for _,item in rocket:GetDescendants() do if item:IsA("Fire") then item.Enabled=true end end
+  task.spawn(function()
+   for step=1,100 do
+    rocket:PivotTo(CFrame.new(0,(step/100)^2*900,0)*home) task.wait(0.1)
+   end
+   for i,person in passengers do
+    local humanoid=person.Character and person.Character:FindFirstChildOfClass("Humanoid")
+    if sessions[person] and humanoid and humanoid.Health>0 then
+     sessions[person].travel=false person:SetAttribute("SpaceFlight",nil) person:SetAttribute("SpaceScore",0)
+     exitSeat(person,origin+Vector3.new(-30+i*8,5,60)) giveBlaster(person)
+     person:SetAttribute("WinterMessage","Космическая игра! Попади по 5 инопланетянам бластером — получишь капибару. Возврат у зелёного маяка")
+    end
+   end
+   rocket:PivotTo(home)
+   for _,item in rocket:GetDescendants() do if item:IsA("Fire") then item.Enabled=false end end
+   flying=false
+  end)
+ end
+ -- The launch control remains reachable from every seat in the cabin.
+ local launchControl=part("Запуск ракеты",Vector3.new(1,1,1),pad+Vector3.new(0,12,0),gold,nil,rocket)
+ prompt(launchControl,"Взлететь",launch,"F")
+ local back=part("Возврат на Землю",Vector3.new(5,5,5),origin+Vector3.new(0,4,74),green,Enum.Material.Neon)
+ sign(back,"На Землю • E",Vector3.new(0,5,0))
+ local function returnEarth(player)
+  sessions[player]=nil player:SetAttribute("SpaceFlight",nil) player:SetAttribute("SpaceScore",nil)
+  exitSeat(player,pad+Vector3.new(22,4,0))
+ end
+ prompt(back,"Вернуться на Землю",returnEarth)
+ for i=1,6 do
+  local model=Instance.new("Model") model.Name="Игрок-инопланетянин "..i model.Parent=world
+  local position=origin+Vector3.new(-60+i*18,5,-40-(i%2)*15)
+  local body=round("Инопланетянин",Vector3.new(4,5,3),position,Color3.fromRGB(127,219,114),model)
+  round("Голова инопланетянина",Vector3.new(5,4,4),position+Vector3.new(0,4,0),Color3.fromRGB(148,238,126),model)
+  for _,side in {-1,1} do
+   round("Большие глаза",Vector3.new(1.3,1.7,0.5),position+Vector3.new(side*1.2,4,1.9),Color3.fromRGB(28,40,62),model)
+   rod("Рука инопланетянина",position+Vector3.new(side*2,1,0),position+Vector3.new(side*3,-1,0),0.4,green,model)
+  end
+  body.CanQuery=true model.PrimaryPart=body
+  sign(body,"Лазерный догоняй!",Vector3.new(0,8,0))
+  table.insert(aliens,{model=model,body=body,home=position,ready=0,index=i})
+ end
+ local function endRide(player)
+  local ride=rides[player] if not ride then return end rides[player]=nil
+  player:SetAttribute("CapybaraRiding",nil)
+  local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+  if humanoid then
+   local weld=ride.seat:FindFirstChild("SeatWeld") if weld then weld:Destroy() end
+   humanoid.Sit=false
+   player.Character:PivotTo(CFrame.new(ride.body.Position+Vector3.new(5,3,0)))
+  end
+  ride.model:Destroy()
+ end
+ local function summon(player)
+  local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+  if not root then return end
+  if not player:GetAttribute("CapybaraUnlocked") then player:SetAttribute("WinterMessage","Выиграй космическую игру: 5 попаданий по инопланетянам!") return end
+  if rides[player] then endRide(player) return end
+  local rider=player.Character:FindFirstChildOfClass("Humanoid")
+  if rider and rider.Sit then player:SetAttribute("WinterMessage","Сначала слезь с другого транспорта") return end
+  if root.Position.Y>500 or player:GetAttribute("SkatesEquipped") or player:GetAttribute("MountainGear") then
+   player:SetAttribute("WinterMessage","Позови капибару на Земле, сняв коньки и горное снаряжение") return
+  end
+  local model=Instance.new("Model") model.Name="Милая капибара "..player.UserId model.Parent=world
+  local pos=root.Position+Vector3.new(4,0,0)
+  local body=round("Капибара",Vector3.new(4,3,6),pos,Color3.fromRGB(162,117,76),model) body.CanCollide=true model.PrimaryPart=body
+  round("Мордочка капибары",Vector3.new(3.4,2.8,3),pos+Vector3.new(0,0.7,-3),Color3.fromRGB(180,134,90),model)
+  for _,side in {-1,1} do
+   round("Ушко капибары",Vector3.new(0.9,1,0.6),pos+Vector3.new(side*1.1,2,-2.5),Color3.fromRGB(153,104,69),model)
+   round("Глаз капибары",Vector3.new(0.3,0.3,0.2),pos+Vector3.new(side*1,1,-4.4),Color3.new(0,0,0),model)
+   for _,depth in {-2,2} do round("Лапка капибары",Vector3.new(1,1.7,1.2),pos+Vector3.new(side*1.3,-1.5,depth),Color3.fromRGB(139,96,63),model) end
+  end
+  local seat=Instance.new("Seat") seat.Name="Верхом на капибаре" seat.Size=Vector3.new(2,0.5,2) seat.Position=pos+Vector3.new(0,1.6,0)
+  seat.Anchored=true seat.Transparency=1 seat.Parent=model
+  local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 then model:Destroy() return end
+  player.Character:PivotTo(CFrame.new(seat.Position+Vector3.new(0,2,0))) seat:Sit(humanoid)
+  rides[player]={model=model,body=body,seat=seat,input=Vector3.zero,untilInput=0}
+  player:SetAttribute("CapybaraRiding",true) player:SetAttribute("WinterMessage","Милая капибара! WASD — ехать, прыжок — слезть")
+ end
+ local capyPost=part("Позвать наградную капибару",Vector3.new(3,3,3),pad+Vector3.new(-23,2,15),gold)
+ sign(capyPost,"Капибара за 5 попаданий в космосе",Vector3.new(0,5,0))
+ prompt(capyPost,"Позвать капибару",summon)
+ task.spawn(function()
+  while platform.Parent do
+   task.wait(4)
+   for player,session in sessions do
+    local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if root and not session.travel and (root.Position-origin).Magnitude<130 then
+     local alien=aliens[math.random(1,#aliens)]
+     if os.clock()>=alien.ready then
+      local target=root.Position
+      local bolt=ball("Лазер инопланетянина",0.8,alien.body.Position,red) bolt.Material=Enum.Material.Neon bolt.CanCollide,bolt.CanQuery=false,false
+      TweenService:Create(bolt,TweenInfo.new(1),{Position=target}):Play() Debris:AddItem(bolt,1.2)
+      task.delay(1,function()
+       local current=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+       local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+       if sessions[player]==session and current and humanoid and humanoid.Health>0 and (current.Position-target).Magnitude<4.5 then
+        humanoid:TakeDamage(5) player:SetAttribute("WinterMessage","Инопланетянин попал! Двигайся, чтобы уклониться от следующего лазера")
+       end
+      end)
+     end
+    end
+   end
+  end
+ end)
+ local function reward(player)
+  if player:GetAttribute("CapybaraUnlocked") then return end
+  player:SetAttribute("CapybaraUnlocked",true)
+  local tool=Instance.new("Tool") tool.Name="Позвать капибару" tool.RequiresHandle=false tool.CanBeDropped=false tool.Parent=player.Backpack
+  tool.Activated:Connect(function() if tool.Parent==player.Character then summon(player) end end)
+  player:SetAttribute("WinterMessage","Победа! Капибара теперь твой друг! Вернись на Землю и выбери «Позвать капибару»")
+ end
+ action.OnServerEvent:Connect(function(player,kind,target)
+  if kind=="dismount" then endRide(player) return end
+  if kind=="ride" then
+   local ride=rides[player]
+   if not ride or typeof(target)~="Vector3" or target.X~=target.X or target.Z~=target.Z then return end
+   if math.abs(target.X)>100 or math.abs(target.Z)>100 then return end
+   local input=Vector3.new(target.X,0,target.Z) ride.input=input.Magnitude>1 and input.Unit or input ride.untilInput=os.clock()+0.4 return
+  end
+  if kind~="shoot" or typeof(target)~="Vector3" or target.X~=target.X or target.Y~=target.Y or target.Z~=target.Z then return end
+  if math.abs(target.X)>100000 or math.abs(target.Y)>100000 or math.abs(target.Z)>100000 then return end
+  local session=sessions[player] local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 then return end
+  local root=character and character:FindFirstChild("HumanoidRootPart")
+  if not session or session.travel or not root or not character:FindFirstChild("Космический бластер") or (root.Position-origin).Magnitude>130
+   or os.clock()-(lastShot[player] or -10)<0.35 then return end
+  local direction=target-root.Position if direction.Magnitude<0.1 then return end
+  lastShot[player]=os.clock()
+  local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude params.FilterDescendantsInstances={character}
+  local hit=workspace:Raycast(root.Position,direction.Unit*160,params)
+  local finish=hit and hit.Position or root.Position+direction.Unit*160
+  local beam=rod("Лазер бластера",root.Position,finish,0.1,cyan,nil,Enum.Material.Neon) beam.CanQuery=false Debris:AddItem(beam,0.15)
+  if hit then for _,alien in aliens do
+   if hit.Instance:IsDescendantOf(alien.model) and os.clock()>=alien.ready then
+    alien.ready=os.clock()+3 session.score+=1 player:SetAttribute("SpaceScore",session.score)
+    alien.model:PivotTo(CFrame.new(alien.home+Vector3.new(0,-35,0)))
+    if session.score>=5 then reward(player) else player:SetAttribute("WinterMessage","Попадание! "..session.score.." / 5") end
+    break
+   end
+  end end
+ end)
+ RunService.Heartbeat:Connect(function(dt)
+  for _,alien in aliens do
+   if os.clock()>=alien.ready then alien.model:PivotTo(CFrame.new(alien.home+Vector3.new(math.sin(os.clock()+alien.index)*5,math.sin(os.clock()*2+alien.index)*0.5,0))) end
+  end
+  for player,session in sessions do
+   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if not root or not humanoid or humanoid.Health<=0 then sessions[player]=nil player:SetAttribute("SpaceFlight",nil) player:SetAttribute("SpaceScore",nil)
+   elseif session.travel and not humanoid.Sit then returnEarth(player)
+   elseif not session.travel and root.Position.Y<1950 then exitSeat(player,origin+Vector3.new(0,5,65)) end
+  end
+  for player,ride in rides do
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if not humanoid or humanoid.Health<=0 or not humanoid.Sit or ride.seat.Occupant~=humanoid then endRide(player)
+   else
+    local input=os.clock()<ride.untilInput and ride.input or Vector3.zero
+    local pos=ride.body.Position+input*26*math.min(dt,0.1)
+    pos=Vector3.new(math.clamp(pos.X,-870,870),pos.Y,math.clamp(pos.Z,-670,670))
+    local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude params.FilterDescendantsInstances={ride.model,player.Character}
+    local ground=workspace:Raycast(pos+Vector3.new(0,12,0),Vector3.new(0,-40,0),params)
+    if ground then pos=Vector3.new(pos.X,ground.Position.Y+2.4,pos.Z) end
+    ride.model:PivotTo(input.Magnitude>0.1 and CFrame.lookAt(pos,pos+input) or CFrame.new(pos))
+   end
+  end
+ end)
+ Players.PlayerRemoving:Connect(function(player) endRide(player) sessions[player]=nil lastShot[player]=nil end)
+ return {sessions=sessions,aliens=aliens,rides=rides,launch=launch,summon=summon,action=action,seats=seats,returnEarth=returnEarth}
+end
+local spaceState=setupSpaceAdventure()

@@ -226,6 +226,39 @@ local function checkSnowDrifts()
  stormState.elapsed=savedElapsed
 end
 checkSnowDrifts()
+local function checkSpaceAdventure()
+ humanoid.Sit=false humanoid.Health=100
+ interact(named('Посадка в ракету'))
+ assert(spaceState.seats[1].Occupant==humanoid,'rocket boarding seats passenger')
+ interact(named('Запуск ракеты'))
+ assert(player:GetAttribute('SpaceFlight') and spaceState.sessions[player].travel,'launch enters travel state')
+ advance(16)
+ assert(not spaceState.sessions[player].travel and root.Position.Y>1900,'rocket delivers player to space station')
+ assert(backpack:FindFirstChild('Космический бластер'),'space station gives blaster')
+ assert(stormState.sheltered(root.Position),'space station protected from winter storm')
+ local blaster=backpack:FindFirstChild('Космический бластер') blaster.Parent=character
+ for i=1,5 do
+  local alien=spaceState.aliens[i]
+  nextRayHit={Instance=alien.body,Position=alien.body.Position,Normal=Vector3.new(0,1,0)}
+  spaceState.action.OnServerEvent:Fire(player,'shoot',alien.body.Position)
+  advance(0.4)
+ end
+ assert(player:GetAttribute('SpaceScore')==5 and player:GetAttribute('CapybaraUnlocked'),'five valid laser hits unlock capybara')
+ assert(backpack:FindFirstChild('Позвать капибару'),'reward includes summon tool')
+ spaceState.returnEarth(player)
+ assert(root.Position.Y<20 and not spaceState.sessions[player],'return portal restores earth position')
+ for _,seat in spaceState.seats do seat.Occupant=nil end
+ humanoid.Sit=false spaceState.summon(player)
+ local ride=assert(spaceState.rides[player],'earned capybara can be ridden')
+ local before=ride.body.Position
+ spaceState.action.OnServerEvent:Fire(player,'ride',Vector3.new(1,0,0))
+ services.RunService.Heartbeat:Fire(0.1)
+ assert(ride.body.Position.X>before.X,'capybara responds to steering')
+ spaceState.action.OnServerEvent:Fire(player,'dismount')
+ assert(not spaceState.rides[player] and not player:GetAttribute('CapybaraRiding') and not humanoid.Sit,'dismount restores walking')
+ blaster.Parent=backpack humanoid.Health=100
+end
+checkSpaceAdventure()
 -- Distance validation rejects a remote prompt activation across the map.
 root.Position=Vector3.new(190,3,170)
 local pile=named('Гора снежков')
@@ -719,6 +752,25 @@ mockKeys[Enum.KeyCode.D]=false
 nextRayHit={Instance=named('Снежный остров'),Position=root.Position-Vector3.new(0,3,0),Normal=Vector3.new(0,1,0)}
 advance(0.1)
 assert(not player:GetAttribute('ParachuteOpen') and not root:FindFirstChild('Плавное снижение'),'landing clears parachute and flight force')
+local function checkSpaceClient()
+ root.Position=Vector3.new(0,2005,50) humanoid.Sit=false
+ spaceState.sessions[player]={score=0,travel=false}
+ local blaster=backpack:FindFirstChild('Космический бластер')
+ blaster.Parent=character advance(1)
+ local beams=count('Лазер бластера')
+ blaster.Activated:Fire()
+ assert(count('Лазер бластера')==beams+1,'client blaster activation reaches server')
+ blaster.Parent=backpack
+ spaceState.returnEarth(player) humanoid.Sit=false spaceState.summon(player)
+ local ride=assert(spaceState.rides[player]) local before=ride.body.Position
+ mockKeys[Enum.KeyCode.W]=true
+ services.RunService.Heartbeat:Fire(0.15) services.RunService.Heartbeat:Fire(0.15)
+ assert(ride.body.Position.Z<before.Z,'client keyboard drives capybara forward')
+ mockKeys[Enum.KeyCode.W]=false
+ services.UserInputService.JumpRequest:Fire()
+ assert(not spaceState.rides[player] and not humanoid.Sit,'jump dismounts capybara through client control')
+end
+checkSpaceClient()
 return true
 `;
  const full=prelude+'\n'+server+'\n'+assertions.replace('return #objects','')+'\n'+setupClient+'\nlocal function runClient()\n'+client+'\nend\nrunClient()\nlocal function runClientChecks()\n'+clientChecks+'\nend\nreturn runClientChecks()';
