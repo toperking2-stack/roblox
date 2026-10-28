@@ -156,6 +156,21 @@ local function checkStorm()
  humanoid.Health=100
 end
 checkStorm()
+local function checkLeonPrank()
+ root.Position=Vector3.new(224,4,-340)
+ local health=humanoid.Health
+ advance(16)
+ local cloud=named('Мультяшное облачко Леона')
+ assert(cloud.Emitted==12,'nearby house guest triggers cartoon cloud')
+ assert(humanoid.Health==health,'prank causes no damage')
+ advance(4)
+ assert(not cloud.Parent,'cloud disappears automatically')
+ local before=count('Мультяшное облачко Леона')
+ advance(10)
+ assert(count('Мультяшное облачко Леона')==before,'prank cooldown prevents spam')
+ root.Position=Vector3.new(0,4,50)
+end
+checkLeonPrank()
 local function checkSnowDrifts()
  local savedElapsed=stormState.elapsed
  local door=stormState.doors[6]

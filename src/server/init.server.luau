@@ -2480,6 +2480,40 @@ local function setupBlizzard()
    part("Нога друга",Vector3.new(0.8,1.7,1),body.Position+Vector3.new(side*0.6,-2,0),gold,nil,friend)
    round("Глаз друга",Vector3.new(0.16,0.16,0.15),body.Position+Vector3.new(side*0.3,2.5,0.85),Color3.new(0,0,0),friend)
   end
+  local function setupLeonPrank()
+   local visits={} local lastPrank=-60
+   task.spawn(function()
+    while body.Parent do
+     task.wait(1)
+     local nearby={}
+     for _,player in Players:GetPlayers() do
+      local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+      local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+      if root and humanoid and humanoid.Health>0 and math.abs(root.Position.X-235)<28 and math.abs(root.Position.Z+345)<24
+       and root.Position.Y>1 and root.Position.Y<29 and (root.Position-body.Position).Magnitude<18 then
+       nearby[player]=true visits[player]=(visits[player] or 0)+1
+       if visits[player]>=15 and os.clock()-lastPrank>=45 then
+        lastPrank=os.clock() visits[player]=0
+        local cloud=Instance.new("ParticleEmitter") cloud.Name="Мультяшное облачко Леона"
+        cloud.Texture="rbxasset://textures/particles/smoke_main.dds"
+        cloud.Color=ColorSequence.new(Color3.fromRGB(139,99,61))
+        cloud.Rate=0 cloud.Lifetime=NumberRange.new(0.8,1.5) cloud.Speed=NumberRange.new(1,3)
+        cloud.SpreadAngle=Vector2.new(70,70) cloud.Size=NumberSequence.new(2)
+        cloud.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0.4),NumberSequenceKeypoint.new(1,1)})
+        cloud.Parent=body cloud:Emit(12) Debris:AddItem(cloud,2)
+        local audio=Instance.new("Sound") audio.Name="Смешной звук Леона"
+        audio.SoundId="rbxasset://sounds/action_jump.mp3" audio.PlaybackSpeed=0.55
+        audio.Volume,audio.RollOffMaxDistance=0.35,28 audio.Parent=body audio:Play() Debris:AddItem(audio,3)
+        player:SetAttribute("WinterMessage","Леон: Ой! Это лимонный сюрприз! Хи-хи 😸")
+       end
+      end
+     end
+     for player in visits do if not nearby[player] then visits[player]=nil end end
+    end
+   end)
+   Players.PlayerRemoving:Connect(function(player) visits[player]=nil end)
+  end
+  setupLeonPrank()
   sign(body,"Леон",Vector3.new(0,5,0))
   prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage","Леон: Привет! Поплаваем в подарке? А потом посмотрим лимонный канал вместе!") end)
   sign(tv,"Лимонный дом Леоны",Vector3.new(0,11,0)) light(tv,gold,35,0.7)

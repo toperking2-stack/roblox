@@ -1,0 +1,3367 @@
+<roblox version="4">
+  <Item class="Lighting" referent="0">
+    <Properties>
+      <string name="Name">Lighting</string>
+      <Color3 name="Ambient">
+        <R>0.32</R>
+        <G>0.38</G>
+        <B>0.55</B>
+      </Color3>
+      <float name="Brightness">2</float>
+      <float name="ClockTime">19</float>
+      <float name="EnvironmentDiffuseScale">0.55</float>
+      <float name="EnvironmentSpecularScale">1</float>
+      <Color3 name="OutdoorAmbient">
+        <R>0.4</R>
+        <G>0.46</G>
+        <B>0.62</B>
+      </Color3>
+    </Properties>
+  </Item>
+  <Item class="ServerScriptService" referent="1">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="2">
+      <Properties>
+        <string name="Name">WinterVillage</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[-- Winter Village: generated entirely from Roblox parts; no external assets.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local world = Instance.new("Model")
+world.Name = "WinterVillage"
+world.Parent = workspace
+local snow = Color3.fromRGB(239, 247, 255)
+local red = Color3.fromRGB(181, 48, 58)
+local green = Color3.fromRGB(31, 100, 78)
+local gold = Color3.fromRGB(255, 200, 91)
+local removeSkates
+local navigationObstacles={}
+local houseCenters={{-43,-22},{58,-40},{-130,-100},{-40,125}}
+local snowLoungeCenters={Vector3.new(-220,0,-180),Vector3.new(220,0,180),Vector3.new(0,0,240),Vector3.new(220,0,60),Vector3.new(-235,0,0),Vector3.new(90,0,-220)}
+local function part(name, size, position, color, material, parent)
+ local p = Instance.new("Part")
+ p.Name, p.Size, p.Position = name, size, position
+ p.Color, p.Material = color, material or Enum.Material.SmoothPlastic
+ p.Anchored = true
+ p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+ p.Parent = parent or world
+ return p
+end
+local function ball(name, size, position, color)
+ local p = part(name, Vector3.new(size,size,size), position, color)
+ p.Shape = Enum.PartType.Ball
+ return p
+end
+-- Rounded, reusable details. Cylinder parts use their X axis as the length axis.
+local function rod(name,a,b,radius,color,parent,material)
+ local p=part(name,Vector3.new((b-a).Magnitude,radius*2,radius*2),a:Lerp(b,0.5),color,material or Enum.Material.Wood,parent)
+ p.Shape=Enum.PartType.Cylinder
+ p.CFrame=CFrame.lookAt(a:Lerp(b,0.5),b)*CFrame.Angles(0,math.pi/2,0)
+ p.CanCollide=false
+ return p
+end
+local function round(name,size,position,color,parent)
+ local p=part(name,size,position,color,nil,parent)
+ p.Shape=Enum.PartType.Ball
+ p.CanCollide=false
+ return p
+end
+local function carrot(position,parent,scale,standing)
+ scale=scale or 1
+ local root=part("Морковка",Vector3.new(0.2,0.2,0.2),position,red,nil,parent)
+ root.Transparency,root.CanCollide=1,false
+ local axis=standing and Vector3.new(0,0,1) or Vector3.new(1,0.08,0.2).Unit
+ local start=position-axis*0.75*scale
+ for i=0,11 do
+  local t=i/12
+  rod("Конус моркови",start+axis*t*1.6*scale,start+axis*(t+1/12)*1.6*scale,
+   (0.31*(1-t)+0.025)*scale,Color3.fromRGB(239-i%3*9,122-i%3*8,29),root,Enum.Material.SmoothPlastic)
+ end
+ for i=-1,1 do
+  rod("Зелёная ботва",start,start+Vector3.new(-0.55,0.45+i*0.25,i*0.3)*scale,0.065*scale,green,root)
+ end
+ return root
+end
+local function bucket(position,parent,scale)
+ scale=scale or 1
+ local root=part("Ведёрко",Vector3.new(0.2,0.2,0.2),position,snow,nil,parent)
+ root.Transparency,root.CanCollide=1,false
+ local metal=Color3.fromRGB(149,170,185)
+ local base=part("Дно ведра",Vector3.new(0.09,1.1,1.1)*scale,position-Vector3.new(0,0.58,0)*scale,metal,Enum.Material.Metal,root)
+ base.Shape,base.Orientation,base.CanCollide=Enum.PartType.Cylinder,Vector3.new(0,0,90),false
+ for i=0,19 do
+  local a=i*math.pi*2/20
+  local wall=part("Стенка ведра",Vector3.new(0.23,1.25,0.08)*scale,position+Vector3.new(math.sin(a)*0.64,0,math.cos(a)*0.64)*scale,metal,Enum.Material.Metal,root)
+  wall.CFrame=CFrame.new(wall.Position)*CFrame.Angles(math.sin(a)*0.12,a,0)
+  wall.CanCollide=false
+  local nextA=(i+1)*math.pi*2/20
+  rod("Ободок ведра",position+Vector3.new(math.sin(a)*0.72,0.65,math.cos(a)*0.72)*scale,
+   position+Vector3.new(math.sin(nextA)*0.72,0.65,math.cos(nextA)*0.72)*scale,0.045*scale,snow,root,Enum.Material.Metal)
+ end
+ for i=0,11 do
+  local a,b=i*math.pi/12,(i+1)*math.pi/12
+  rod("Ручка ведра",position+Vector3.new(math.cos(a)*0.76,0.2+math.sin(a)*0.95,0)*scale,
+   position+Vector3.new(math.cos(b)*0.76,0.2+math.sin(b)*0.95,0)*scale,0.04*scale,metal,root,Enum.Material.Metal)
+ end
+ return root
+end
+local function branch(position,parent)
+ local root=part("Палочки",Vector3.new(0.2,0.2,0.2),position,green,nil,parent)
+ root.Transparency,root.CanCollide=1,false
+ rod("Ветка с корой",position+Vector3.new(-1.4,0,-0.2),position+Vector3.new(1.4,0.1,0.3),0.13,Color3.fromRGB(102,67,41),root)
+ rod("Ответвление",position,position+Vector3.new(0.7,0.05,0.95),0.08,Color3.fromRGB(118,77,47),root)
+ rod("Тонкая веточка",position+Vector3.new(-0.6,0,0),position+Vector3.new(-0.4,0.15,-0.65),0.06,Color3.fromRGB(118,77,47),root)
+ return root
+end
+local function sign(on, text, offset)
+ local gui = Instance.new("BillboardGui")
+ gui.Size, gui.StudsOffset = UDim2.fromOffset(180, 44), offset or Vector3.new(0,5,0)
+ gui.MaxDistance = 32
+ gui.AlwaysOnTop = false
+ gui.Parent = on
+ local label = Instance.new("TextLabel")
+ label.Size = UDim2.fromScale(1,1)
+ label.BackgroundColor3, label.BackgroundTransparency = Color3.fromRGB(22,39,58), 1
+ label.TextColor3, label.TextSize = snow, 14
+ label.TextStrokeTransparency = 0.45
+ label.Font, label.TextWrapped = Enum.Font.GothamBold, true
+ label.Text = text
+ label.Parent = gui
+end
+local function sound(on,id,volume)
+ local audio=Instance.new("Sound")
+ audio.SoundId,audio.Volume,audio.RollOffMaxDistance=id,volume or 0.4,65
+ audio.Parent=on
+ audio:Play()
+ Debris:AddItem(audio,4)
+end
+local function prompt(on, text, callback, keyName)
+ local p = Instance.new("ProximityPrompt")
+ p.ActionText, p.ObjectText, p.MaxActivationDistance = text, on.Name, 10
+ p.RequiresLineOfSight = false
+ p.KeyboardKeyCode=Enum.KeyCode[keyName or "E"]
+ if keyName then p.UIOffset=Vector2.new(0,({F=30,E=-30})[keyName] or 0) end
+ p.Parent = on
+ p.Triggered:Connect(function(player)
+  local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+  if root and (root.Position-on.Position).Magnitude<=14 then callback(player) end
+ end)
+end
+local function light(on, color, range, brightness)
+ local l = Instance.new("PointLight")
+ l.Color, l.Range, l.Brightness = color, range, brightness or 1
+ l.Parent = on
+end
+-- Tapered circular tiers produce a fir silhouette without uploaded meshes.
+local forestTrees={}
+local function tree(x,z,height)
+ local model=Instance.new("Model") model.Name="Ёлка" model.Parent=world
+ local basePart=part
+ local function part(name,size,position,color,material) return basePart(name,size,position,color,material,model) end
+ table.insert(forestTrees,{model=model,x=x,z=z,height=height})
+ table.insert(navigationObstacles,{x=x,z=z,radius=math.max(9,height*0.29+4)})
+ part("Ствол",Vector3.new(1.2,height*0.32,1.2),Vector3.new(x,height*0.16,z),Color3.fromRGB(97,64,47),Enum.Material.Wood)
+ local rings=(math.abs(x)>180 or math.abs(z)>170) and 4 or 8
+ for tier=0,3 do
+  local base=height*(0.16+tier*0.19)
+  local tierHeight=height*0.34
+  local radius=height*(0.29-tier*0.055)
+  for ring=0,rings-1 do
+   local width=math.max(0.15,radius*2*(1-ring/rings))
+   local thickness=tierHeight/rings
+   local disc=part("Еловые ветви",Vector3.new(thickness+0.04,width,width),Vector3.new(x,base+ring*thickness,z),green)
+   disc.Shape=Enum.PartType.Cylinder
+   disc.Orientation=Vector3.new(0,0,90)
+   if ring==0 then
+    local cap=part("Снежная кайма",Vector3.new(0.18,width+0.1,width+0.1),disc.Position+Vector3.new(0,thickness/2,0),snow,Enum.Material.Snow)
+    cap.Shape=Enum.PartType.Cylinder
+    cap.Orientation=Vector3.new(0,0,90)
+   end
+  end
+ end
+end
+part("Снежный остров",Vector3.new(1800,5,1400),Vector3.new(0,-2.5,0),snow,Enum.Material.Snow)
+part("Дорожка",Vector3.new(12,0.15,145),Vector3.new(0,0.1,0),Color3.fromRGB(186,211,229),Enum.Material.Ice)
+local spawn = Instance.new("SpawnLocation")
+spawn.Name, spawn.Size, spawn.Position = "Добро пожаловать", Vector3.new(8,1,8), Vector3.new(0,0.5,50)
+spawn.Neutral, spawn.Anchored, spawn.Color = true,true,green
+spawn.Parent = world
+sign(spawn,"НОВОГОДНЯЯ ДЕРЕВНЯ\nГорки • санки • чай у камина")
+tree(0,-12,27)
+for i=1,20 do
+ local a=i*math.pi*2/20
+ local y=5+(i%4)*4
+ local r=7-y*0.18
+ local ornament=ball("Гирлянда",1,Vector3.new(math.cos(a)*r,y, -12+math.sin(a)*r),i%2==0 and gold or red)
+ ornament.Material=Enum.Material.Neon
+ if i%4==0 then light(ornament,gold,12) end
+end
+local star=ball("Звезда",2.5,Vector3.new(0,28,-12),gold)
+star.Material=Enum.Material.Neon
+light(star,gold,35,2)
+for i=1,8 do
+ local x=(i%2==0 and 1 or -1)*(7+i%3*3)
+ local gift=part("Подарок",Vector3.new(3,2.5,3),Vector3.new(x,1.25,-12+(i%4)*3),i%2==0 and red or green)
+ part("Лента",Vector3.new(0.4,2.6,3.1),gift.Position,gold)
+end
+for i=1,32 do
+ tree(-190+(i%2)*380,-165+math.floor((i-1)/2)*21,12+i%3*3)
+end
+for _,z in ipairs({-48,-25,0,25,48}) do
+ for _,x in ipairs({-9,9}) do
+  part("Фонарный столб",Vector3.new(0.5,7,0.5),Vector3.new(x,3.5,z),Color3.fromRGB(43,56,65),Enum.Material.Metal)
+  local lantern=part("Тёплый фонарь",Vector3.new(1.3,1.6,1.3),Vector3.new(x,7.5,z),Color3.fromRGB(255,215,153),Enum.Material.Neon)
+  part("Крышка фонаря",Vector3.new(1.8,0.3,1.8),Vector3.new(x,8.5,z),snow)
+  light(lantern,Color3.fromRGB(255,207,140),17,0.8)
+ end
+end
+-- Open doorway, usable interior and furniture.
+local function house(x,z,theme)
+ local main=theme==1
+ local accent=({red,green,Color3.fromRGB(76,128,173),Color3.fromRGB(164,91,117)})[theme]
+ -- Raise the whole interior above terrain. No coincident snow/wood surfaces.
+ local basePart=part
+ local function part(name,size,position,color,material,parent)
+  return basePart(name,size,position+Vector3.new(0,1.2,0),color,material,parent)
+ end
+ local brown=theme==3 and Color3.fromRGB(107,124,145) or Color3.fromRGB(151,91,61)
+ part("Пол домика",Vector3.new(28,1,26),Vector3.new(x,0.5,z),brown,Enum.Material.WoodPlanks)
+ part("Задняя стена",Vector3.new(28,12,1),Vector3.new(x,6,z-13),brown,Enum.Material.WoodPlanks)
+ for _,dx in ipairs({-14,14}) do
+  part("Боковая стена",Vector3.new(1,12,26),Vector3.new(x+dx,6,z),brown,Enum.Material.WoodPlanks)
+ end
+ for _,dx in ipairs({-9,9}) do
+  part("Фасад",Vector3.new(10,12,1),Vector3.new(x+dx,6,z+13),brown)
+  local w=part("Окно",Vector3.new(4,4,1.1),Vector3.new(x+dx,7,z+13),gold,Enum.Material.Neon)
+  light(w,gold,14,0.7)
+ end
+ part("Над дверью",Vector3.new(8,3,1),Vector3.new(x,10.5,z+13),brown)
+ -- Pitched roof, gingerbread gables and icing trim.
+ for side=-1,1,2 do
+  local roof=part("Скат крыши",Vector3.new(18.5,1.2,30),Vector3.new(x+side*8,16.5,z),Color3.fromRGB(103,51,43),Enum.Material.WoodPlanks)
+  roof.Orientation=Vector3.new(0,0,-side*30)
+  local icing=part("Снег на крыше",Vector3.new(18.7,0.55,30.4),roof.Position+Vector3.new(0,-0.35,0),snow,Enum.Material.Snow)
+  icing.Orientation=roof.Orientation
+  for _,edge in ipairs({-13,13}) do
+   part("Сахарная колонна",Vector3.new(0.7,12,0.7),Vector3.new(x+edge,6,z+side*13),snow)
+  end
+ end
+ for step=0,10 do
+  local width=28*(1-step/11)
+  for _,depth in ipairs({-13,13}) do
+   part("Пряничный фронтон",Vector3.new(width,0.68,1),Vector3.new(x,12+step*0.65,z+depth),brown)
+  end
+ end
+ part("Снежный конёк",Vector3.new(1,0.9,31),Vector3.new(x,21.7,z),snow)
+ for _,dx in ipairs({-9,9}) do
+  part("Переплёт окна",Vector3.new(0.22,4.3,0.25),Vector3.new(x+dx,7,z+13.7),snow)
+  part("Переплёт окна",Vector3.new(4.3,0.22,0.25),Vector3.new(x+dx,7,z+13.7),snow)
+  part("Подоконник",Vector3.new(5,0.4,1.2),Vector3.new(x+dx,4.8,z+13.7),snow)
+ end
+ part("Ковёр",Vector3.new(17,0.12,12),Vector3.new(x,1.08,z+1),accent,Enum.Material.Fabric)
+ local chimney=part("Дымоход",Vector3.new(3,7,3),Vector3.new(x+8,20,z-7),Color3.fromRGB(113,65,58),Enum.Material.Brick)
+ local smoke=Instance.new("Smoke")
+ smoke.Size,smoke.Opacity,smoke.RiseVelocity,smoke.Parent=3,0.15,3,chimney
+ for i=-3,3 do
+  local bulb=ball("Лампочка",0.7,Vector3.new(x+i*4,11.5,z+14),i%2==0 and red or gold)
+  bulb.Material=Enum.Material.Neon
+ end
+ -- Open hearth: stone frame around visible logs and flames.
+ part("Задник камина",Vector3.new(8,6,0.7),Vector3.new(x,3.5,z-11.5),Color3.fromRGB(47,40,43),Enum.Material.Slate)
+ for _,side in ipairs({-1,1}) do
+  part("Стойка камина",Vector3.new(1.5,5,3.5),Vector3.new(x+side*3.5,3,z-10),Color3.fromRGB(106,83,78),Enum.Material.Brick)
+ end
+ part("Каминная полка",Vector3.new(10,0.8,4.5),Vector3.new(x,5.8,z-10),snow,Enum.Material.Marble)
+ part("Под камина",Vector3.new(9,0.5,4.5),Vector3.new(x,1,z-10),Color3.fromRGB(74,68,71),Enum.Material.Slate)
+ for _,dx in ipairs({-1,1}) do
+  local log=part("Поленья",Vector3.new(0.8,0.8,3),Vector3.new(x+dx,1.7,z-9.8),Color3.fromRGB(77,47,32),Enum.Material.Wood)
+  log.Orientation=Vector3.new(0,dx*25,0)
+ end
+ local hearth=part("Живой огонь",Vector3.new(3,0.4,2),Vector3.new(x,1.9,z-9.5),Color3.fromRGB(255,126,41),Enum.Material.Neon)
+ hearth.CanCollide=false
+ local fire=Instance.new("Fire")
+ fire.Size,fire.Heat,fire.Parent=3.5,3,hearth
+ light(hearth,Color3.fromRGB(255,165,85),18,1.1)
+ for i=-2,2 do
+  local candle=part("Свеча",Vector3.new(0.35,0.8,0.35),Vector3.new(x+i*1.6,6.6,z-10),gold)
+  local flame=Instance.new("Fire")
+  flame.Size,flame.Heat,flame.Parent=0.4,0,candle
+ end
+ part("Полка с книгами",Vector3.new(7,0.4,2),Vector3.new(x-9,7,z-11),brown,Enum.Material.Wood)
+ for i=1,6 do
+  part("Книга",Vector3.new(0.6,1.5+(i%2)*0.3,1.3),Vector3.new(x-12+i,8,z-11),i%2==0 and green or red)
+ end
+ for _,dx in ipairs({-11,11}) do
+  part("Подарок в доме",Vector3.new(2,1.6,2),Vector3.new(x+dx,1.8,z-7),dx<0 and red or green)
+  part("Лента подарка",Vector3.new(0.25,1.7,2.1),Vector3.new(x+dx,1.8,z-7),gold)
+ end
+ part("Ступень у входа",Vector3.new(8,0.6,3),Vector3.new(x,0.1,z+15),brown,Enum.Material.WoodPlanks)
+ part("Верхняя ступень",Vector3.new(8,1.1,2),Vector3.new(x,0.45,z+13.5),brown,Enum.Material.WoodPlanks)
+ for _,dx in ipairs({-10,10}) do
+  local seat=Instance.new("Seat")
+  seat.Size,seat.Position,seat.Anchored=Vector3.new(4,1,4),Vector3.new(x+dx,3.2,z),true
+  seat.Color,seat.Parent=accent,world
+  part("Спинка кресла",Vector3.new(4,4,1),Vector3.new(x+dx,3,z+2),red)
+ end
+ for i=1,9 do
+  local a=i*math.pi*2/9
+  local ornament=part("Настенный венок",Vector3.new(0.8,0.8,0.5),Vector3.new(x+math.cos(a)*1.4,8+math.sin(a)*1.4,z-12.2),i%3==0 and red or green)
+  ornament.Shape=Enum.PartType.Ball
+ end
+ for i=-2,2 do
+  part("Праздничная подушка",Vector3.new(1.2,0.5,1.2),Vector3.new(x+i*0.8,1.6,z+7),i%2==0 and red or gold,Enum.Material.Fabric)
+ end
+ local tableTop=part("Стол с чаем",Vector3.new(6,0.5,4),Vector3.new(x,2.5,z+3),brown,Enum.Material.Wood)
+ part("Ножка стола",Vector3.new(1,2.5,1),Vector3.new(x,1.25,z+3),brown)
+ sign(tableTop,({"ЧАЙНЫЙ ДОМИК","ПРЯНИЧНЫЙ ДОМ","ЛЕДЯНОЕ ШАЛЕ","МАСТЕРСКАЯ ПОДАРКОВ"})[theme],Vector3.new(0,4,0))
+ if theme==2 then
+  for i=1,5 do
+   part("Пряничное печенье",Vector3.new(0.7,0.18,0.7),Vector3.new(x-2+i*0.7,2.9,z+3),gold)
+  end
+ elseif theme==3 then
+  for i=1,5 do
+   local crystal=part("Ледяная звезда",Vector3.new(0.5,0.5,0.5),Vector3.new(x-7+i*2,8,z-12),Color3.fromRGB(157,231,255),Enum.Material.Neon)
+   crystal.Orientation=Vector3.new(0,0,45)
+  end
+ elseif theme==4 then
+  part("Верстак подарков",Vector3.new(8,0.5,3),Vector3.new(x-8,3,z-5),brown,Enum.Material.Wood)
+  for i=1,4 do
+   part("Завёрнутый подарок",Vector3.new(1.3,1.3,1.3),Vector3.new(x-12+i*1.5,3.9,z-5),i%2==0 and green or red)
+  end
+ end
+ prompt(tableTop,"Взять чай",function(player)
+  if player.Backpack:FindFirstChild("Горячий чай") or (player.Character and player.Character:FindFirstChild("Горячий чай")) then return end
+  local tool=Instance.new("Tool")
+  tool.Name="Горячий чай"
+  local cup=Instance.new("Part")
+  cup.Name,cup.Size,cup.Color,cup.CanCollide="Handle",Vector3.new(0.7,0.8,0.7),snow,false
+  local cupMesh=Instance.new("CylinderMesh")
+  cupMesh.Parent=cup
+  cup.Massless=true
+  local tea=Instance.new("Part")
+  tea.Name,tea.Size,tea.Color,tea.CanCollide,tea.Massless="Чай",Vector3.new(0.55,0.06,0.55),Color3.fromRGB(113,64,29),false,true
+  tea.CFrame=cup.CFrame*CFrame.new(0,0.4,0)
+  tea.Parent=tool
+  local weld=Instance.new("WeldConstraint")
+  weld.Part0,weld.Part1,weld.Parent=cup,tea,cup
+  tool.CanBeDropped=false
+  cup.Parent=tool
+  local steam=Instance.new("Smoke")
+  steam.Size,steam.Opacity,steam.RiseVelocity,steam.Parent=0.3,0.15,2,cup
+  tool.Parent=player.Backpack
+ end)
+end
+house(-43,-22,1)
+house(58,-40,2)
+house(-130,-100,3)
+house(-40,125,4)
+local paths={{0,50,-40,145},{0,-65,-130,-80}}
+for _,path in paths do
+ local a,b=Vector3.new(path[1],0.18,path[2]),Vector3.new(path[3],0.18,path[4])
+ local road=part("Дорожка к домикам",Vector3.new(7,0.2,(b-a).Magnitude),a:Lerp(b,0.5),Color3.fromRGB(200,219,234),Enum.Material.Snow)
+ road.CFrame=CFrame.lookAt(a:Lerp(b,0.5),b)
+end
+local forestRandom=Random.new(479)
+local clearings={
+ {-34,85,12,12},{-17,85,12,12},{0,85,12,12},{17,85,12,12},{34,85,12,12},
+ {-250,210,24,24},{245,215,24,24},{250,-210,24,24},{-250,-210,24,24},
+ {-155,135,22,22},{150,125,22,22},{155,-140,22,22},{-160,-30,22,22},
+ {-43,-22,28,27},{58,-40,28,27},{-130,-100,29,27},{-40,125,28,27},
+ {85,88,30,70},{135,-5,30,100},{30,-65,30,100},
+ {-105,75,42,36},{-98,-45,35,32},{-40,43,37,29},{0,-12,27,35},
+}
+for _=1,240 do
+ local x,z=forestRandom:NextNumber(-298,298),forestRandom:NextNumber(-268,268)
+ local clear=math.abs(x)<16
+ for _,center in snowLoungeCenters do
+  if math.abs(x-center.X)<20 and math.abs(z-center.Z)<20 then clear=true end
+ end
+ for _,path in paths do
+  local dx,dz=path[3]-path[1],path[4]-path[2]
+  local t=math.clamp(((x-path[1])*dx+(z-path[2])*dz)/(dx*dx+dz*dz),0,1)
+  if (x-path[1]-t*dx)^2+(z-path[2]-t*dz)^2<100 then clear=true end
+ end
+ for _,area in clearings do
+  if math.abs(x-area[1])<area[3] and math.abs(z-area[2])<area[4] then clear=true break end
+ end
+ if not clear then tree(x,z,forestRandom:NextNumber(10,19)) end
+end
+-- Larger, rounded Father Frost with a detailed coat, face, fur and mittens.
+local santaModel=Instance.new("Model")
+santaModel.Name,santaModel.Parent="Дед Мороз",world
+local santa=round("Дед Мороз",Vector3.new(5.6,6.4,3.6),Vector3.new(23,5.9,-10),red,santaModel)
+santaModel.PrimaryPart=santa
+for _,side in ipairs({-1,1}) do
+ round("Сапог",Vector3.new(1.8,1.7,2.7),Vector3.new(23+side*1.25,0.95,-9.7),Color3.fromRGB(42,39,45),santaModel)
+ rod("Штанина",Vector3.new(23+side*1.25,1.8,-10),Vector3.new(23+side*1.25,3.6,-10),0.65,red,santaModel,Enum.Material.Fabric)
+ rod("Рукав шубы",Vector3.new(23+side*2.3,7.2,-10),Vector3.new(23+side*3.4,4.9,-9.6),0.78,red,santaModel,Enum.Material.Fabric)
+ round("Меховой манжет",Vector3.new(1.7,0.8,1.7),Vector3.new(23+side*3.4,4.9,-9.6),snow,santaModel)
+ round("Варежка",Vector3.new(1.2,1.5,1.2),Vector3.new(23+side*3.5,4.2,-9.5),red,santaModel)
+end
+round("Меховой подол",Vector3.new(5.7,0.7,3.7),Vector3.new(23,3,-10),snow,santaModel)
+round("Пояс",Vector3.new(5.7,0.5,3.7),Vector3.new(23,5,-10),Color3.fromRGB(46,34,37),santaModel)
+part("Пряжка",Vector3.new(0.9,0.75,0.2),Vector3.new(23,5,-8.05),gold,Enum.Material.Metal,santaModel)
+round("Голова",Vector3.new(2.7,3,2.7),Vector3.new(23,10,-10),Color3.fromRGB(245,202,170),santaModel)
+for _,side in ipairs({-1,1}) do
+ round("Щёчка",Vector3.new(0.65,0.45,0.25),Vector3.new(23+side*0.85,9.7,-8.9),Color3.fromRGB(232,148,135),santaModel)
+ round("Глаза",Vector3.new(0.2,0.25,0.16),Vector3.new(23+side*0.48,10.25,-8.68),Color3.fromRGB(39,62,75),santaModel)
+ round("Бровь",Vector3.new(0.65,0.17,0.2),Vector3.new(23+side*0.48,10.6,-8.77),snow,santaModel)
+end
+round("Нос",Vector3.new(0.45,0.5,0.5),Vector3.new(23,9.9,-8.45),Color3.fromRGB(238,171,151),santaModel)
+for i=-3,3 do
+ round("Прядь бороды",Vector3.new(0.85,2.2-math.abs(i)*0.2,0.8),Vector3.new(23+i*0.35,8.9,-8.9),snow,santaModel)
+end
+round("Усы",Vector3.new(1.8,0.5,0.55),Vector3.new(23,9.45,-8.5),snow,santaModel)
+for i=0,7 do
+ local hat=part("Шапка",Vector3.new(0.28,2.9-i*0.28,2.9-i*0.28),Vector3.new(23+i*0.07,11.4+i*0.23,-10),red,Enum.Material.Fabric,santaModel)
+ hat.Shape,hat.Orientation=Enum.PartType.Cylinder,Vector3.new(0,0,90)
+end
+round("Мех шапки",Vector3.new(3.2,0.5,3.2),Vector3.new(23,11.3,-10),snow,santaModel)
+round("Помпон",Vector3.new(0.9,0.9,0.9),Vector3.new(23.6,13.3,-10),snow,santaModel)
+-- All Father Frost details form one anchored assembly, with visible joint coverage.
+rod("Шея Деда Мороза",Vector3.new(23,8.4,-10),Vector3.new(23,9.5,-10),1,Color3.fromRGB(245,202,170),santaModel)
+for _,side in ipairs({-1,1}) do
+ round("Плечо шубы",Vector3.new(2,2,2),Vector3.new(23+side*2.2,7.2,-10),red,santaModel)
+end
+for _,piece in santaModel:GetDescendants() do
+ if piece:IsA("BasePart") and piece~=santa then
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=santa,piece,piece
+  piece.Anchored,piece.Massless,piece.CanCollide=false,true,false
+ end
+end
+sign(santa,"ДЕД МОРОЗ • E — поговорить",Vector3.new(0,8.5,0))
+prompt(santa,"Поговорить",function(player) player:SetAttribute("SantaGreeting",(player:GetAttribute("SantaGreeting") or 0)+1) end)
+-- Ground navigation across the expanded park. A cached grid avoids houses, ice,
+-- slopes, trees and drift lounges. Each flood search chooses a reachable distant goal.
+local navigationRects={
+ {-680,0,160,390},
+ {390,-35,95,205},{285,-35,13,205},
+ {-43,-22,22,22},{58,-40,22,22},{-130,-100,22,22},{-40,125,22,22},
+ {-105,75,36,30},{85,50,22,42},{135,-45,22,53},{30,-105,22,45},
+}
+local navigationGrid
+local function gridKey(x,z) return x..":"..z end
+local function buildNavigationGrid()
+ local grid={}
+ for x=-32,32 do for z=-25,25 do
+  local wx,wz=x*16,z*16
+  local blocked=false
+  for _,rect in navigationRects do
+   if math.abs(wx-rect[1])<rect[3] and math.abs(wz-rect[2])<rect[4] then blocked=true break end
+  end
+  if not blocked then
+   for _,obstacle in navigationObstacles do
+    if (wx-obstacle.x)^2+(wz-obstacle.z)^2<obstacle.radius^2 then blocked=true break end
+   end
+  end
+  if not blocked then grid[gridKey(x,z)]={x=x,z=z,point=Vector3.new(wx,3.2,wz)} end
+ end end
+ return grid
+end
+local function planDeerPath(position,random,requestedGoal)
+ if not navigationGrid then navigationGrid=buildNavigationGrid() end
+ local start,best=nil,math.huge
+ for _,node in navigationGrid do
+  local distance=(node.point-position).Magnitude
+  if distance<best then start,best=node,distance end
+ end
+ if not start then return {} end
+ local queue={start}
+ local parents={[gridKey(start.x,start.z)]=false}
+ local distant={}
+ local cursor=1
+ while cursor<=#queue do
+  local node=queue[cursor] cursor+=1
+  if (node.point-position).Magnitude>100 then table.insert(distant,node) end
+  for _,offset in {{1,0},{-1,0},{0,1},{0,-1}} do
+   local key=gridKey(node.x+offset[1],node.z+offset[2])
+   if navigationGrid[key] and parents[key]==nil then
+    parents[key]=node table.insert(queue,navigationGrid[key])
+   end
+  end
+ end
+ local goal
+ if requestedGoal then
+  local closest=math.huge
+  for _,node in queue do
+   local distance=(node.point-requestedGoal).Magnitude
+   if distance<closest then goal,closest=node,distance end
+  end
+ else
+  if #distant==0 then return {} end
+  goal=distant[math.floor(random:NextNumber(1,#distant+0.999))]
+ end
+ local reversed={}
+ local node=goal
+ while node do table.insert(reversed,node.point) node=parents[gridKey(node.x,node.z)] end
+ local path={}
+ for i=#reversed,1,-1 do table.insert(path,reversed[i]) end
+ return path
+end
+-- Eight reindeer can travel between distant reachable areas of the park.
+local reindeer={}
+local tourSleds={}
+local deerRandom=Random.new(937)
+local companions={}
+local carrotCooldown={}
+local carrotAction=Instance.new("RemoteEvent")
+carrotAction.Name,carrotAction.Parent="CarrotAction",ReplicatedStorage
+local function waitForPlayer(deer)
+ if deer.leader then
+  companions[deer.leader]=nil
+  deer.leader:SetAttribute("CompanionDeer",nil)
+ end
+ deer.leader=nil deer.path={} deer.waypoint=1
+ deer.waitAnchor=deer.model:GetPivot().Position
+end
+carrotAction.OnServerEvent:Connect(function(player,action)
+ if action=="wait" then
+  local deer=companions[player]
+  if deer then waitForPlayer(deer) player:SetAttribute("WinterMessage","Олень подождёт здесь. Морковкой можно позвать снова") end
+  return
+ end
+ if action~="feed" then return end
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not root or not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Морковка для оленя") then return end
+ if carrotCooldown[player] and os.clock()-carrotCooldown[player]<0.8 then return end
+ if (player:GetAttribute("DeerCarrots") or 0)<=0 then player:SetAttribute("WinterMessage","Морковки закончились — пополни мешочек на боку оленя") return end
+ local closest,distance=nil,14
+ for _,deer in reindeer do
+  local d=(deer.model:GetPivot().Position-root.Position).Magnitude
+  if d<distance and (not deer.leader or deer.leader==player) then closest,distance=deer,d end
+ end
+ if not closest then player:SetAttribute("WinterMessage","Подойди ближе к свободному оленю") return end
+ carrotCooldown[player]=os.clock()
+ player:SetAttribute("DeerCarrots",player:GetAttribute("DeerCarrots")-1)
+ if companions[player] and companions[player]~=closest then waitForPlayer(companions[player]) end
+ closest.leader=player companions[player]=closest
+ closest.petUntil=os.clock()+1
+ closest.chewUntil=os.clock()+2
+ closest.path={} closest.waypoint=1 closest.repathAt=0
+ player:SetAttribute("CompanionDeer",closest.model.Name)
+ player:SetAttribute("WinterMessage","Хрум! Олень идёт за тобой. Можно вести к камину и снова угощать морковкой")
+ sound(closest.model.PrimaryPart,"rbxasset://sounds/action_footsteps_plastic.mp3",0.25)
+end)
+
+local function detachSled(deer)
+ if not deer.tow then return end
+ local sled=deer.tow
+ for _,object in deer.towParts do object:Destroy() end
+ sled:SetAttribute("TowedBy",nil)
+ deer.tow,deer.towParts=nil,nil
+ deer.waitAnchor=deer.model:GetPivot().Position
+ deer.path={} deer.waypoint=1
+end
+for index,center in {Vector3.new(-155,3.2,135),Vector3.new(150,3.2,125),Vector3.new(155,3.2,-140),Vector3.new(-160,3.2,-30),Vector3.new(-250,3.2,210),Vector3.new(245,3.2,215),Vector3.new(250,3.2,-210),Vector3.new(-250,3.2,-210)} do
+ local model=Instance.new("Model") model.Name,model.Parent="Олень "..index,world
+ local body=round("Тело оленя",Vector3.new(3.5,3.1,6),center,Color3.fromRGB(139,91,56),model)
+ model.PrimaryPart=body
+ round("Грудка",Vector3.new(2.5,2.9,2.2),center+Vector3.new(0,0,-2),Color3.fromRGB(194,158,111),model)
+ rod("Шея",center+Vector3.new(0,0.5,-1.8),center+Vector3.new(0,2,-3.1),0.95,Color3.fromRGB(139,91,56),model)
+ round("Голова оленя",Vector3.new(1.5,1.8,2.3),center+Vector3.new(0,2,-3.4),Color3.fromRGB(155,105,63),model)
+ round("Нос оленя",Vector3.new(0.65,0.5,0.5),center+Vector3.new(0,1.9,-4.6),index==1 and red or Color3.fromRGB(47,35,31),model)
+ local legs={}
+ for _,side in ipairs({-1,1}) do
+  round("Ухо оленя",Vector3.new(0.5,1,0.8),center+Vector3.new(side*0.85,2.8,-3),Color3.fromRGB(159,113,73),model)
+  round("Глаз оленя",Vector3.new(0.16,0.2,0.2),center+Vector3.new(side*0.72,2.25,-4),Color3.fromRGB(20,25,29),model)
+  local start=center+Vector3.new(side*0.5,2.8,-3)
+  local tip=center+Vector3.new(side*1.2,4.5,-2.8)
+  rod("Рог",start,tip,0.085,gold,model)
+  for twig=1,3 do
+   local a=start:Lerp(tip,twig/4)
+   rod("Отросток рога",a,a+Vector3.new(side*0.55,0.55,0.1),0.06,gold,model)
+  end
+  for _,z in ipairs({-1.8,1.8}) do
+   local offset=Vector3.new(side*0.95,-1.8,z)
+   local leg=rod("Нога оленя",center+offset+Vector3.new(0,0.9,0),center+offset-Vector3.new(0,0.9,0),0.29,Color3.fromRGB(115,75,46),model)
+   local hoof=round("Копытце",Vector3.new(0.55,0.5,0.7),center+offset-Vector3.new(0,0.8,0),Color3.fromRGB(53,44,39),model)
+   table.insert(legs,{part=leg,hoof=hoof,offset=offset,phase=side*(z>0 and 1 or -1)})
+  end
+ end
+ local deer={model=model,center=center,legs=legs,path={},waypoint=1,pauseUntil=0,waitAnchor=center}
+ deer.faceParts={}
+ local faceNames={["Голова оленя"]=true,["Нос оленя"]=true,["Глаз оленя"]=true,["Ухо оленя"]=true,["Рог"]=true,["Отросток рога"]=true}
+ for _,detail in model:GetDescendants() do
+  if detail:IsA("BasePart") and faceNames[detail.Name] then
+   table.insert(deer.faceParts,{part=detail,offset=body.CFrame:ToObjectSpace(detail.CFrame)})
+  end
+ end
+ table.insert(reindeer,deer)
+ -- Each meadow has a small usable touring sled ready to hitch.
+ local sled=Instance.new("Model") sled.Name,sled.Parent="Прогулочные санки",world
+ local sledSeat=Instance.new("Seat")
+ sledSeat.Name,sledSeat.Size,sledSeat.Anchored,sledSeat.CanTouch="Сиденье прогулочных санок",Vector3.new(3,0.5,3),true,false
+ sledSeat.CFrame,sledSeat.Color,sledSeat.Parent=CFrame.new(center+Vector3.new(6,-1.6,6)),green,sled
+ sled.PrimaryPart=sledSeat
+ for _,side in ipairs({-1,1}) do
+  local runner=part("Полозья",Vector3.new(0.25,0.3,4.4),sledSeat.Position+Vector3.new(side*1.4,-0.7,0),gold,Enum.Material.Metal,sled)
+  runner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.05)
+  runner.Anchored,runner.Massless=false,true
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=sledSeat,runner,runner
+ end
+ sledSeat.Anchored=false
+ sledSeat:SetNetworkOwner(nil)
+ sled:SetAttribute("Towable",true)
+ table.insert(tourSleds,sled)
+ deer.homeSled=sled
+ local bag=round("Мешочек с морковками",Vector3.new(1.5,1.8,1.3),center+Vector3.new(1.9,-0.1,0.8),Color3.fromRGB(158,113,65),model)
+ rod("Ремешок мешочка",center+Vector3.new(1.5,1,0.2),center+Vector3.new(1.9,0.7,0.8),0.09,gold,model)
+ local bagCarrot=carrot(center+Vector3.new(2,0.8,0.8),model,0.55)
+ bagCarrot.Name="Морковка в мешочке"
+ prompt(bag,"Взять морковки",function(player)
+  player:SetAttribute("DeerCarrots",8)
+  local character=player.Character
+  if player.Backpack:FindFirstChild("Морковка для оленя") or (character and character:FindFirstChild("Морковка для оленя")) then
+   player:SetAttribute("WinterMessage","Мешочек пополнен: 8 морковок") return
+  end
+  local tool=Instance.new("Tool") tool.Name,tool.CanBeDropped="Морковка для оленя",false
+  local handle=carrot(Vector3.zero,tool,0.7)
+  handle.Name="Handle"
+  local details=handle:GetDescendants()
+  handle.Anchored,handle.CanCollide,handle.CanQuery,handle.Massless=false,false,false,true
+  for _,detail in details do
+   if detail:IsA("BasePart") then
+    detail.Anchored,detail.CanCollide,detail.CanQuery,detail.Massless=false,false,false,true
+    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=handle,detail,detail
+   end
+  end
+  tool.Parent=player.Backpack
+  player:SetAttribute("WinterMessage","Выбери морковку и нажми рядом с оленем: угостить и повести за собой")
+ end)
+ prompt(sledSeat,"Сесть в санки • прыжок — выйти",function(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or sledSeat.Occupant then return end
+  if removeSkates then removeSkates(player) end
+  character:PivotTo(sledSeat.CFrame*CFrame.new(0,2,0))
+  sledSeat:Sit(humanoid)
+ end)
+ prompt(body,"Погладить оленя",function(player)
+  deer.petUntil=os.clock()+3
+  player:SetAttribute("WinterMessage","Олень доволен! ♥ E — погладить • F — прицепить санки")
+  local gui=Instance.new("BillboardGui") gui.Size,gui.StudsOffset,gui.Parent=UDim2.fromOffset(70,50),Vector3.new(0,5,0),body
+  local heart=Instance.new("TextLabel") heart.Size,heart.BackgroundTransparency,heart.Text,heart.TextSize=UDim2.fromScale(1,1),1,"♥",36
+  heart.TextColor3,heart.Parent=red,gui
+  Debris:AddItem(gui,2)
+ end,"E")
+ prompt(body,"Прицепить / отцепить ближайшие санки",function(player)
+  if deer.leader and deer.leader~=player then return end
+  if deer.visitRoom then
+   local house=houseCenters[deer.visitRoom]
+   local pos=body.Position
+   if math.abs(pos.X-house[1])<14 and math.abs(pos.Z-house[2])<14 then
+    player:SetAttribute("WinterMessage","Сначала выведи оленя из дома — санки прицепляют на улице") return
+   end
+  end
+  if deer.tow then detachSled(deer) player:SetAttribute("WinterMessage","Санки отцеплены") return end
+  local closest,distance=nil,30
+  for _,candidate in world:GetChildren() do
+   if candidate:IsA("Model") and candidate:GetAttribute("Towable") and not candidate:GetAttribute("TowedBy") and candidate.PrimaryPart then
+    local d=(candidate.PrimaryPart.Position-body.Position).Magnitude
+    if d<distance then closest,distance=candidate,d end
+   end
+  end
+  if not closest then player:SetAttribute("WinterMessage","Подожди оленя у свободных санок: расстояние до 30 шагов") return end
+  local a,b=Instance.new("Attachment"),Instance.new("Attachment")
+  a.Position,b.Position=Vector3.new(0,-1.5,3),Vector3.new(0,0,-1.8)
+  a.Parent,b.Parent=body,closest.PrimaryPart
+  local rope=Instance.new("RopeConstraint")
+  rope.Name,rope.Attachment0,rope.Attachment1="Упряжь",a,b
+  rope.Length,rope.Thickness,rope.Visible=8,0.12,true
+  rope.Parent=body
+  closest:SetAttribute("TowedBy",model.Name)
+  closest.PrimaryPart:SetNetworkOwner(nil)
+  deer.tow,deer.towParts=closest,{rope,a,b}
+  player:SetAttribute("WinterMessage","Санки прицеплены! Садись в них — олень повезёт по парку")
+ end,"F")
+end
+local deerTime,deerTick=0,0
+RunService.Heartbeat:Connect(function(dt)
+ deerTime+=dt deerTick+=dt
+ if deerTick<0.1 then return end deerTick=0
+ for _,deer in reindeer do
+  local current=deer.model:GetPivot().Position
+  local target=current
+  local floorHeight=3.2
+  if deer.leader then
+   local leader=deer.leader
+   local root=leader.Character and leader.Character:FindFirstChild("HumanoidRootPart")
+   local humanoid=leader.Character and leader.Character:FindFirstChildOfClass("Humanoid")
+   if not root or not humanoid or humanoid.Health<=0 then waitForPlayer(deer)
+   else
+    local room
+    for index,house in houseCenters do
+     if math.abs(root.Position.X-house[1])<12 and math.abs(root.Position.Z-house[2])<11 then room=index break end
+    end
+    local goal=Vector3.new(root.Position.X,3.2,root.Position.Z)
+    if room then
+     local house=houseCenters[room]
+     if deer.tow then detachSled(deer) leader:SetAttribute("WinterMessage","Санки подождут снаружи, олень идёт к камину") end
+     if deer.visitRoom~=room then deer.visitRoom=room deer.entryStage=1 end
+     local stages={Vector3.new(house[1],3.2,house[2]+19),Vector3.new(house[1],5.4,house[2]+10),Vector3.new(house[1]+5.5,5.4,house[2]+7),Vector3.new(house[1]+5.5,5.4,house[2]-4)}
+     goal=stages[deer.entryStage]
+     if (Vector3.new(current.X,goal.Y,current.Z)-goal).Magnitude<1.5 and deer.entryStage<4 then
+      deer.entryStage+=1 goal=stages[deer.entryStage]
+     end
+     if deer.entryStage>=2 then floorHeight=5.4 end
+    elseif deer.visitRoom then
+     local house=houseCenters[deer.visitRoom]
+     goal=Vector3.new(house[1],5.4,house[2]+19)
+     floorHeight=current.Z<house[2]+14 and 5.4 or 3.2
+     if (Vector3.new(current.X,goal.Y,current.Z)-goal).Magnitude<2 then deer.visitRoom=nil end
+    end
+    local horizontal=(Vector3.new(goal.X,current.Y,goal.Z)-current).Magnitude
+    if horizontal<22 and (os.clock()>=(deer.forceRouteUntil or 0) or (room and deer.entryStage>=2)) then
+     target=goal
+     if not room and not deer.visitRoom and horizontal<6 then target=current end
+    else
+     if os.clock()>=(deer.repathAt or 0) or not deer.path[deer.waypoint] then
+      deer.path=planDeerPath(current,deerRandom,goal) deer.waypoint=1 deer.repathAt=os.clock()+2
+     end
+     target=deer.path[deer.waypoint] or current
+     if (target-current).Magnitude<1 then deer.waypoint+=1 target=deer.path[deer.waypoint] or current end
+    end
+   end
+  elseif deer.tow then
+   target=deer.path[deer.waypoint]
+   if target and (target-current).Magnitude<1 then
+    deer.waypoint+=1 target=deer.path[deer.waypoint]
+    if not target then deer.pauseUntil=os.clock()+deerRandom:NextNumber(0.5,1.5) end
+   end
+   if not target and os.clock()>=deer.pauseUntil then
+    deer.path=planDeerPath(current,deerRandom) deer.waypoint=1 target=deer.path[1]
+   end
+   target=target or current
+  else
+   target=deer.waitAnchor or current
+   floorHeight=target.Y
+  end
+  local speed=deer.tow and 6.5 or 8.2
+  if deer.petUntil and os.clock()<deer.petUntil then target=current end
+  local delta=Vector3.new(target.X-current.X,0,target.Z-current.Z)
+  local movement=delta.Magnitude>0.01 and delta.Unit*math.min(delta.Magnitude,speed*0.1) or Vector3.zero
+  local params=RaycastParams.new()
+  params.FilterType=Enum.RaycastFilterType.Exclude
+  local exclude={deer.model}
+  if deer.tow then table.insert(exclude,deer.tow) end
+  if deer.leader and deer.leader.Character then table.insert(exclude,deer.leader.Character) end
+  params.FilterDescendantsInstances=exclude
+  if movement.Magnitude>0.01 and workspace:Raycast(current,movement.Unit*3,params) then movement=Vector3.zero
+   deer.blockedFor=(deer.blockedFor or 0)+0.1
+   if deer.leader then deer.forceRouteUntil=os.clock()+4 end
+   if deer.blockedFor>1 then deer.path={} deer.pauseUntil=os.clock()+0.3 deer.blockedFor=0 end end
+  local pos=Vector3.new(math.clamp(current.X+movement.X,-520,520),floorHeight,math.clamp(current.Z+movement.Z,-420,420))
+  if math.abs(pos.X+105)<32 and math.abs(pos.Z-75)<26 then pos=current movement=Vector3.zero end
+  local direction=movement.Magnitude>0.01 and movement.Unit or deer.model:GetPivot().LookVector
+  local frame=CFrame.lookAt(pos,pos+direction)
+  deer.model:PivotTo(frame)
+  local chew=deer.chewUntil and os.clock()<deer.chewUntil
+  local nod=chew and (0.1+math.sin(os.clock()*9)*0.08) or 0
+  local headFrame=frame*CFrame.new(0,1.5,-2.5)*CFrame.Angles(nod,0,0)*CFrame.new(0,-1.5,2.5)
+  for _,detail in deer.faceParts do detail.part.CFrame=headFrame*detail.offset end
+  for _,leg in deer.legs do
+   leg.part.CFrame=frame*CFrame.new(leg.offset)*CFrame.Angles((movement.Magnitude>0.01 and math.sin(deerTime*4+leg.phase*math.pi/2)*0.25 or 0),0,math.pi/2)
+   leg.hoof.CFrame=leg.part.CFrame*CFrame.new(-0.8,0,0)*CFrame.Angles(0,0,-math.pi/2)
+  end
+ end
+end)
+-- Winter park: rounded drifts, a frozen pond and three guided sled routes.
+local random=Random.new(2026)
+for i=1,65 do
+ local x=(i%2==0 and -1 or 1)*random:NextNumber(95,290)
+ local z=random:NextNumber(-258,258)
+ if math.abs(x+105)<40 and math.abs(z-75)<36 then z=-150 end
+ for _,center in snowLoungeCenters do
+  if math.abs(x-center.X)<20 and math.abs(z-center.Z)<20 then z=center.Z>0 and -250 or 250 end
+ end
+ local drift=ball("Сугроб",1,Vector3.new(x,-0.6,z),snow)
+ drift.Size=Vector3.new(random:NextNumber(9,20),random:NextNumber(3,7),random:NextNumber(9,20))
+ drift.Material=Enum.Material.Snow
+ table.insert(navigationObstacles,{x=x,z=z,radius=12})
+end
+local snowLounges={}
+for index,center in snowLoungeCenters do
+ table.insert(navigationRects,{center.X,center.Z,13,13})
+ local zone=part("Мягкий сугроб "..index,Vector3.new(12,6,12),center+Vector3.new(0,2,0),snow)
+ zone.Transparency,zone.CanCollide=1,false
+ for lobe=1,6 do
+  local angle=lobe*math.pi/3
+  local mound=round("Пушистый край сугроба",Vector3.new(6,3.8,6),center+Vector3.new(math.cos(angle)*5,0.8,math.sin(angle)*5),snow)
+  mound.Material=Enum.Material.Snow
+ end
+ part("Снежная подушка",Vector3.new(7,0.3,7),center+Vector3.new(0,0.15,0),snow,Enum.Material.Snow)
+ local seats={}
+ for _,offset in ipairs({-1.7,1.7}) do
+  local seat=Instance.new("Seat")
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch,seat.CanCollide,seat.Transparency="Отдых в снегу",Vector3.new(2,0.4,2),true,false,false,1
+  seat.Position,seat.Parent=center+Vector3.new(offset,0.8,0),world
+  table.insert(seats,seat)
+ end
+ local puff=Instance.new("ParticleEmitter")
+ puff.Texture,puff.Rate,puff.Lifetime="rbxasset://textures/particles/sparkles_main.dds",0,NumberRange.new(0.4,0.9)
+ puff.Speed,puff.SpreadAngle,puff.Size=NumberRange.new(3,8),Vector2.new(180,180),NumberSequence.new(0.2)
+ puff.Parent=zone
+ local function relax(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit then return end
+  for _,seat in seats do
+   if not seat.Occupant then
+    if removeSkates then removeSkates(player) end
+    local root=character:FindFirstChild("HumanoidRootPart")
+    if root then root.AssemblyLinearVelocity=Vector3.zero end
+    character:PivotTo(seat.CFrame*CFrame.new(0,2,0))
+    seat:Sit(humanoid)
+    puff:Emit(35)
+    sound(zone,"rbxasset://sounds/action_footsteps_plastic.mp3",0.25)
+    player:SetAttribute("WinterMessage","Плюх! Устраивайся в снегу ☃ Прыжок — выйти")
+    return
+   end
+  end
+ end
+ prompt(zone,"Плюхнуться и отдохнуть",relax)
+ sign(zone,"МЯГКИЙ СУГРОБ • прыгай или нажми E",Vector3.new(0,4,0))
+ zone.Touched:Connect(function(hit)
+  local player=Players:GetPlayerFromCharacter(hit.Parent)
+  local root=player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+  if root and root.AssemblyLinearVelocity.Y< -5 then relax(player) end
+ end)
+ table.insert(snowLounges,{zone=zone,seats=seats,puff=puff})
+end
+local pond=part("Ледяной каток",Vector3.new(58,1,45),Vector3.new(-105,1.15,75),Color3.fromRGB(102,183,213),Enum.Material.Ice)
+pond.Reflectance=0.55
+pond.CustomPhysicalProperties=PhysicalProperties.new(0.7,0.005,0.05)
+sign(pond,"КАТОК • коньки у входа",Vector3.new(0,4,0))
+for _,dx in ipairs({-29,29}) do
+ part("Бортик катка",Vector3.new(1,4.8,47),Vector3.new(-105+dx,4.05,75),snow)
+end
+for _,dx in ipairs({-16.5,16.5}) do
+ part("Передний бортик",Vector3.new(25,4.8,1),Vector3.new(-105+dx,4.05,97.5),snow)
+end
+part("Задний бортик",Vector3.new(59,4.8,1),Vector3.new(-105,4.05,52.5),snow)
+for _,fence in world:GetChildren() do
+ if fence.Name=="Бортик катка" or fence.Name=="Передний бортик" or fence.Name=="Задний бортик" then
+  fence.Material,fence.Transparency=Enum.Material.Glass,0.35
+  part("Поручень катка",Vector3.new(fence.Size.X+0.2,0.35,fence.Size.Z+0.2),fence.Position+Vector3.new(0,2.4,0),red)
+ end
+end
+part("Ступень катка",Vector3.new(16,0.8,4),Vector3.new(-105,0.4,100),snow)
+for i=1,7 do
+ local line=part("Узор на льду",Vector3.new(0.08,0.025,10+i),Vector3.new(-128+i*6,1.68,66+i%3*7),Color3.fromRGB(192,231,244),Enum.Material.Glass)
+ line.Orientation=Vector3.new(0,i*37,0)
+ line.Transparency,line.CanCollide=0.3,false
+end
+local rack=part("Прокат коньков",Vector3.new(5,3,2),Vector3.new(-94,1.5,103),green,Enum.Material.Wood)
+sign(rack,"КОНЬКИ • E надеть / снять")
+local slipStates={}
+local skateColors={Color3.fromRGB(206,61,80),Color3.fromRGB(62,145,212),Color3.fromRGB(112,184,137),Color3.fromRGB(162,106,209),Color3.fromRGB(235,164,64),Color3.fromRGB(227,119,178)}
+local skateRandom=Random.new()
+local lastSkateColor={}
+
+local wasOnIce={}
+removeSkates=function(player)
+ player:SetAttribute("SkatesEquipped",false)
+ wasOnIce[player]=nil
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if humanoid then humanoid.WalkSpeed=16 humanoid.AutoRotate=true humanoid.PlatformStand=false end
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ if root then
+  for _,child in root:GetChildren() do if child.Name=="SkatingMomentum" then child:Destroy() end end
+  root.AssemblyLinearVelocity=Vector3.new(0,root.AssemblyLinearVelocity.Y,0)
+  root.AssemblyAngularVelocity=Vector3.zero
+ end
+ local gear=player.Character and player.Character:FindFirstChild("SkateGear")
+ if gear then gear:Destroy() end
+end
+local removeSkatesEvent=Instance.new("RemoteEvent")
+removeSkatesEvent.Name,removeSkatesEvent.Parent="RemoveSkates",ReplicatedStorage
+removeSkatesEvent.OnServerEvent:Connect(removeSkates)
+prompt(rack,"Надеть / снять коньки",function(player)
+ if player:GetAttribute("SkatesEquipped") then removeSkates(player) return end
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not humanoid or humanoid.Health<=0 then return end
+ -- Remove stale gear and recover a fallen humanoid before starting a new session.
+ removeSkates(player)
+ humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=16,true,false
+ humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+ local previous=lastSkateColor[player] or 0
+ local colorIndex
+ repeat colorIndex=math.floor(skateRandom:NextNumber(1,#skateColors+0.999)) until colorIndex~=previous
+ lastSkateColor[player]=colorIndex
+ local bootColor=skateColors[colorIndex]
+ local gear=Instance.new("Model") gear.Name,gear.Parent="SkateGear",character
+ gear:SetAttribute("ColorIndex",colorIndex)
+ for _,side in ipairs({"Left","Right"}) do
+  local foot=character:FindFirstChild(side.."Foot") or character:FindFirstChild(side.." Leg")
+  if foot then
+   local offset=foot.Name==side.."Foot" and -0.45 or -1.1
+   local blade=part("Лезвие конька",Vector3.new(0.18,0.3,1.9),Vector3.zero,Color3.fromRGB(202,219,230),Enum.Material.Metal,gear)
+   blade.CFrame=foot.CFrame*CFrame.new(0,offset,0)
+   blade.Anchored,blade.CanCollide,blade.Massless=false,false,true
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=foot,blade,blade
+   local left,right=Instance.new("Attachment"),Instance.new("Attachment")
+   left.Position,right.Position=Vector3.new(-0.09,-0.13,0.6),Vector3.new(0.09,-0.13,0.6)
+   left.Parent,right.Parent=blade,blade
+   local trace=Instance.new("Trail")
+   trace.Name,trace.Attachment0,trace.Attachment1="IceTrace",left,right
+   trace.Lifetime,trace.LightEmission,trace.Enabled=1.2,0.35,false
+   trace.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0.25),NumberSequenceKeypoint.new(1,1)})
+   trace.Parent=blade
+   local spray=Instance.new("ParticleEmitter")
+   spray.Name,spray.Texture="IceSpray","rbxasset://textures/particles/sparkles_main.dds"
+   spray.Enabled,spray.Rate,spray.Lifetime=false,22,NumberRange.new(0.15,0.4)
+   spray.Speed,spray.Size=NumberRange.new(2,5),NumberSequence.new(0.08)
+   spray.Acceleration,spray.SpreadAngle=Vector3.new(0,-10,0),Vector2.new(40,40)
+   spray.Parent=left
+   local boot=part("Ботинок конька",Vector3.new(1.1,0.85,1.8),Vector3.zero,bootColor,nil,gear)
+   boot.Shape=Enum.PartType.Ball
+   boot.CFrame=foot.CFrame*CFrame.new(0,offset+0.55,-0.1)
+   boot.Anchored,boot.CanCollide,boot.Massless=false,false,true
+   local binding=Instance.new("WeldConstraint") binding.Part0,binding.Part1,binding.Parent=foot,boot,boot
+   local function bootDetail(name,size,position,color)
+    local detail=part(name,size,Vector3.zero,color,nil,gear)
+    detail.CFrame=foot.CFrame*CFrame.new(position)
+    detail.Anchored,detail.CanCollide,detail.Massless=false,false,true
+    local link=Instance.new("WeldConstraint") link.Part0,link.Part1,link.Parent=foot,detail,detail
+    return detail
+   end
+   bootDetail("Подошва конька",Vector3.new(1.08,0.16,1.8),Vector3.new(0,offset+0.21,-0.1),Color3.fromRGB(43,47,58))
+   local cuff=bootDetail("Высокий манжет",Vector3.new(0.98,0.85,0.95),Vector3.new(0,offset+1.02,0.25),bootColor)
+   cuff.Shape=Enum.PartType.Ball
+   for i=1,3 do
+    bootDetail("Шнуровка",Vector3.new(0.6,0.06,0.1),Vector3.new(0,offset+0.92,0.35-i*0.25),snow)
+   end
+  end
+ end
+ player:SetAttribute("SkateSession",(player:GetAttribute("SkateSession") or 0)+1)
+ player:SetAttribute("SkatesEquipped",true)
+ player:SetAttribute("WinterMessage","Коньки надеты! На льду разгоняйся клавишами движения")
+end)
+RunService.Heartbeat:Connect(function()
+ for _,player in Players:GetPlayers() do
+  local character=player.Character
+  local root=character and character:FindFirstChild("HumanoidRootPart")
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if root and humanoid and humanoid.Health>0 then
+   local pos=root.Position
+   local onIce=math.abs(pos.X+105)<28 and math.abs(pos.Z-75)<21 and pos.Y>1 and pos.Y<9
+   local inBounds=math.abs(pos.X+105)<28.5 and math.abs(pos.Z-75)<21.5
+   if player:GetAttribute("SkatesEquipped") then
+    if inBounds then wasOnIce[player]=true elseif wasOnIce[player] then removeSkates(player) end
+   end
+   if not inBounds and humanoid.PlatformStand and slipStates[player] then
+    humanoid.PlatformStand=false humanoid.WalkSpeed=16 humanoid.AutoRotate=true
+    root.AssemblyAngularVelocity=Vector3.zero
+   end
+   if onIce and not player:GetAttribute("SkatesEquipped") and os.clock()-(slipStates[player] or -10)>3 then
+    slipStates[player]=os.clock()
+    humanoid.PlatformStand=true
+    root.AssemblyAngularVelocity=Vector3.new(0,0,5)
+    root.AssemblyLinearVelocity=root.CFrame.LookVector*12+Vector3.new(0,2,0)
+    player:SetAttribute("WinterMessage","Скользко! Возьми коньки у входа на каток")
+    task.delay(1.1,function()
+     if humanoid.Parent and player.Character==character then
+      humanoid.PlatformStand=false
+      root.AssemblyAngularVelocity=Vector3.zero
+      humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+     end
+    end)
+   end
+  end
+ end
+end)
+local function initializePlayer(player)
+ player.CharacterAdded:Connect(function()
+  player:SetAttribute("SkatesEquipped",false)
+  slipStates[player],wasOnIce[player]=nil,nil
+ end)
+end
+Players.PlayerAdded:Connect(initializePlayer)
+for _,player in Players:GetPlayers() do initializePlayer(player) end
+-- Route rides are server-controlled; seats cannot be flung by network physics.
+local riding={}
+local function sledOccupied(model)
+ for _,p in model:GetDescendants() do if p:IsA("Seat") and p.Occupant then return true end end
+ return false
+end
+local function hill(x,z,height,length,title)
+ local width=15
+ local angle=math.atan(height/length)
+ local slope=part("Снежный спуск",Vector3.new(width,2,math.sqrt(height*height+length*length)),Vector3.new(x,height/2,z),snow,Enum.Material.Snow)
+ slope.Orientation=Vector3.new(math.deg(angle),0,0)
+ local top=Vector3.new(x,height+1,z-length/2)
+ local bottom=Vector3.new(x,1,z+length/2)
+ part("Стартовая площадка",Vector3.new(22,2,10),top+Vector3.new(0,-1,-3),snow)
+ for i=0,math.ceil(height/0.8) do
+  local t=i/math.ceil(height/0.8)
+  part("Лестница на горку",Vector3.new(5,1+t*height,3),Vector3.new(x+12,(1+t*height)/2,z+length/2-t*length),Color3.fromRGB(179,201,216),Enum.Material.Snow)
+ end
+ for _,side in ipairs({-1,1}) do
+  local rail=part("Бортик спуска",Vector3.new(0.6,1.2,math.sqrt(height*height+length*length)),slope.Position+Vector3.new(side*7.5,1.5,0),Color3.fromRGB(180,221,240),Enum.Material.Ice)
+  rail.Orientation=slope.Orientation
+ end
+ local start=part("Прокат санок",Vector3.new(3,2,2),Vector3.new(x+20,1,z+length/2),red)
+ sign(start,title.."\nE — подняться на старт")
+ prompt(start,"На вершину",function(player)
+  if riding[player] or not player.Character then return end
+  player.Character:PivotTo(CFrame.new(top+Vector3.new(0,4,-4)))
+ end)
+ local sled=Instance.new("Model")
+ sled.Name,sled.Parent="Санки",world
+ local seat=Instance.new("Seat")
+ seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Сиденье санок",Vector3.new(3,0.5,3),true,false
+ seat.CFrame=CFrame.lookAt(top+Vector3.new(0,1,0),Vector3.new(bottom.X,top.Y+1,bottom.Z))
+ seat.Color,seat.Material,seat.Parent=red,Enum.Material.Wood,sled
+ sled.PrimaryPart=seat
+ local function sledPart(name,size,offset,color)
+  local p=part(name,size,Vector3.zero,color,Enum.Material.Wood,sled)
+  p.CFrame=seat.CFrame*CFrame.new(offset)
+  p.CanCollide=name=="Полозья"
+  p.CustomPhysicalProperties=PhysicalProperties.new(1,0.11,0.05)
+ end
+ for _,side in ipairs({-1,1}) do
+  sledPart("Полозья",Vector3.new(0.25,0.3,4.5),Vector3.new(side*1.4,-0.8,0),Color3.fromRGB(118,150,170))
+  sledPart("Опоры",Vector3.new(0.25,0.9,2),Vector3.new(side*1.2,-0.4,0),gold)
+ end
+ sledPart("Спинка санок",Vector3.new(3,1.5,0.3),Vector3.new(0,0.8,1.4),red)
+ local home=sled:GetPivot()
+ local busy=false
+ local freeSled=false
+ local function release(speed)
+  if freeSled then return end
+  freeSled=true
+  sled:SetAttribute("Towable",true)
+  for _,p in sled:GetDescendants() do
+   if p:IsA("BasePart") and p~=seat then
+    local weld=Instance.new("WeldConstraint")
+    weld.Part0,weld.Part1,weld.Parent=seat,p,seat
+    p.Anchored=false
+    p.Massless=true
+   end
+  end
+  seat.CustomPhysicalProperties=PhysicalProperties.new(1,0.11,0.05)
+  seat.Anchored=false
+  seat:SetNetworkOwner(nil)
+  seat.AssemblyLinearVelocity=Vector3.new(0,0,speed)
+  seat.AssemblyAngularVelocity=Vector3.zero
+ end
+ local lastRider=nil
+ seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+  if not seat.Occupant and lastRider then riding[lastRider]=nil lastRider=nil end
+ end)
+ prompt(seat,"Сесть на санки • прыжок — выйти",function(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if riding[player] or not humanoid or humanoid.Health<=0 or seat.Occupant then return end
+  if busy and not freeSled then return end
+  riding[player],lastRider=true,player
+  character:PivotTo(seat.CFrame*CFrame.new(0,2,0))
+  seat:Sit(humanoid)
+  if freeSled then return end
+  busy=true
+  task.spawn(function()
+   task.wait(0.3)
+   local started=os.clock()
+   local duration=2.1+length/65
+   while os.clock()-started<duration do
+    local t=math.clamp((os.clock()-started)/duration,0,1)
+    local pos=(top+Vector3.new(0,1.5,0)):Lerp(bottom+Vector3.new(0,1.5,0),t*t)
+    sled:PivotTo(CFrame.lookAt(pos,pos+Vector3.new(0,-height/length,1)))
+    RunService.Heartbeat:Wait()
+   end
+   -- Keep the rider seated; jumping is the only automatic way out.
+   sled:PivotTo(CFrame.lookAt(bottom+Vector3.new(0,1.5,2),bottom+Vector3.new(0,1.5,10)))
+   release(45)
+  end)
+ end)
+ -- Explicit retrieval preserves the sled at the runout until requested.
+ local returnPost=part("Возврат санок",Vector3.new(2,2,2),start.Position+Vector3.new(5,0,0),green)
+ prompt(returnPost,"Вернуть свободные санки наверх",function()
+  if sled:GetAttribute("TowedBy") or not freeSled or sledOccupied(sled) or seat.AssemblyLinearVelocity.Magnitude>1.5 then return end
+  for _,weld in seat:GetChildren() do if weld:IsA("WeldConstraint") then weld:Destroy() end end
+  for _,p in sled:GetDescendants() do if p:IsA("BasePart") then p.Anchored=true end end
+  sled:PivotTo(home)
+  sled:SetAttribute("Towable",false)
+  freeSled,busy=false,false
+ end)
+end
+hill(85,50,18,55,"МАЛАЯ ГОРКА")
+hill(135,-45,30,80,"БОЛЬШАЯ ГОРКА")
+hill(30,-105,23,65,"ЛЕСНОЙ СПУСК")
+-- Snowman ingredients are personal; rolling and completed figures are replicated.
+local inventories={}
+local rolling={}
+local builtByPlayer={}
+local snowmanPlots={}
+local required={"Палочки","Морковка","Ведёрко"}
+local ingredientAttributes={["Палочки"]="InventorySticks",["Морковка"]="InventoryCarrot",["Ведёрко"]="InventoryBucket"}
+local function inventory(player)
+ if not inventories[player] then inventories[player]={} end
+ return inventories[player]
+end
+for index,name in required do
+ for copy=1,3 do
+  local pos=Vector3.new(-150+(index-1)*20+copy*7,0.7,-30+(copy-1)*17)
+  local item
+  if name=="Палочки" then item=branch(Vector3.new(pos.X,0.3,pos.Z),world)
+  elseif name=="Морковка" then item=carrot(Vector3.new(pos.X,0.35,pos.Z),world)
+  else item=bucket(Vector3.new(pos.X,0.8,pos.Z),world) end
+  item:SetAttribute("IngredientKey",ingredientAttributes[name])
+  for _,detail in item:GetDescendants() do
+   if detail:IsA("BasePart") then detail:SetAttribute("IngredientKey",ingredientAttributes[name]) end
+  end
+  sign(item,name,Vector3.new(0,2,0))
+  prompt(item,"Подобрать",function(player)
+   inventory(player)[name]=true
+   player:SetAttribute(ingredientAttributes[name],true)
+  end)
+ end
+end
+local snowmanBase=part("Мастерская снеговиков",Vector3.new(8,0.25,8),Vector3.new(-98,0.25,-45),Color3.fromRGB(202,224,235))
+sign(snowmanBase,"СНЕГОВИК\nКом + палочки + морковка + ведёрко")
+local rollingBase=ball("Заготовка снежного кома",1.8,Vector3.new(-84,0.9,-42),snow)
+prompt(rollingBase,"Катать снежный ком",function(player)
+ if rolling[player] or not player.Character then return end
+ local sphere=ball("Ком игрока",1.8,Vector3.zero,snow)
+ sphere.CanCollide,sphere.CanQuery=false,false
+ sphere.Material=Enum.Material.Snow
+ rolling[player]={sphere=sphere,size=1.8,distance=0}
+ player:SetAttribute("SnowSize",1.8)
+end)
+local stopRolling=Instance.new("RemoteEvent")
+stopRolling.Name,stopRolling.Parent="StopRollingSnow",ReplicatedStorage
+local function dropSnow(player)
+ local state=rolling[player]
+ if not state then return end
+ -- Dropped balls stay decorative for one minute; they never damage players.
+ state.sphere.CanCollide=true
+ Debris:AddItem(state.sphere,60)
+ rolling[player]=nil
+ player:SetAttribute("SnowSize",0)
+end
+stopRolling.OnServerEvent:Connect(dropSnow)
+local accumulator=0
+RunService.Heartbeat:Connect(function(dt)
+ accumulator+=dt
+ if accumulator<0.08 then return end
+ accumulator=0
+ for player,state in rolling do
+  local character=player.Character
+  local root=character and character:FindFirstChild("HumanoidRootPart")
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not root or not humanoid or humanoid.Health<=0 then
+   state.sphere:Destroy() rolling[player]=nil
+  else
+   local pos=root.Position
+   local look=Vector3.new(root.CFrame.LookVector.X,0,root.CFrame.LookVector.Z)
+   if look.Magnitude>0.1 then look=look.Unit else look=Vector3.new(0,0,-1) end
+   local travel=state.previous and (Vector3.new(pos.X,0,pos.Z)-state.previous).Magnitude or 0
+   state.previous=Vector3.new(pos.X,0,pos.Z)
+   local point=pos+look*(2.7+state.size/2)
+   local params=RaycastParams.new()
+   params.FilterType=Enum.RaycastFilterType.Exclude
+   params.FilterDescendantsInstances={character,state.sphere}
+   local ground=workspace:Raycast(point+Vector3.new(0,8,0),Vector3.new(0,-35,0),params)
+   if ground and ground.Instance.Material==Enum.Material.Snow and ground.Normal.Y>0.7
+    and travel<6 and math.abs(pos.X)<190 and math.abs(pos.Z)<170 then
+    state.size=math.min(6,state.size+travel*0.035)
+   end
+   state.sphere.Size=Vector3.new(state.size,state.size,state.size)
+   state.sphere.CFrame=CFrame.new(point.X,(ground and ground.Position.Y or 0)+state.size/2,point.Z)*CFrame.Angles(state.distance,0,0)
+   state.distance+=travel/math.max(state.size/2,0.9)
+   local rounded=math.floor(state.size*10)/10
+   if player:GetAttribute("SnowSize")~=rounded then player:SetAttribute("SnowSize",rounded) end
+  end
+ end
+end)
+prompt(snowmanBase,"Собрать снеговика",function(player)
+ local items=inventory(player)
+ local state=rolling[player]
+ if not state or state.size<4 then player:SetAttribute("WinterMessage","Сначала накатай ком до 4 метров") return end
+ for _,name in required do
+  if not items[name] then player:SetAttribute("WinterMessage","Не хватает: "..name) return end
+ end
+ local collection=builtByPlayer[player] or {}
+ if #collection>=6 then player:SetAttribute("WinterMessage","У тебя уже 6 снеговиков. Убери одного через его подсказку") return end
+ local plot
+ for i=1,24 do if not snowmanPlots[i] then plot=i break end end
+ if not plot then player:SetAttribute("WinterMessage","Поляна заполнена снеговиками") return end
+ local model=Instance.new("Model")
+ model.Name,model.Parent="Снеговик "..player.Name,world
+ table.insert(collection,model)
+ builtByPlayer[player]=collection
+ snowmanPlots[plot]=model
+ model:SetAttribute("PlotIndex",plot)
+ local x,z=-125+((plot-1)%6)*7,-72+math.floor((plot-1)/6)*7
+ local function piece(name,size,pos,color)
+  local p=part(name,size,pos,color,nil,model)
+  return p
+ end
+ local function snowBall(size,y)
+  local p=piece("Снежный ком",Vector3.new(size,size,size),Vector3.new(x,y,z),snow)
+  p.Shape=Enum.PartType.Ball
+  if not model.PrimaryPart then model.PrimaryPart=p end
+ end
+ snowBall(4,2) snowBall(3,4.8) snowBall(2,7)
+ for _,side in ipairs({-1,1}) do
+  local arm=piece("Палочка",Vector3.new(0.2,0.2,3),Vector3.new(x+side*2.4,4.8,z),Color3.fromRGB(100,65,37))
+  arm.Orientation=Vector3.new(0,side*65,side*20)
+  local eye=piece("Уголёк",Vector3.new(0.18,0.18,0.18),Vector3.new(x+side*0.35,7.2,z+0.95),Color3.fromRGB(25,30,35))
+  eye.Shape=Enum.PartType.Ball
+ end
+ carrot(Vector3.new(x,6.95,z+1.3),model,0.65,true)
+ bucket(Vector3.new(x,8.2,z),model,0.85)
+ prompt(model.PrimaryPart,"Убрать своего снеговика",function(owner)
+  if owner~=player then return end
+  local index=table.find(collection,model)
+  if index then table.remove(collection,index) end
+  snowmanPlots[plot]=nil
+  model:Destroy()
+ end)
+ piece("Шарф",Vector3.new(2.4,0.4,2.4),Vector3.new(x,6,z),red)
+ for _,name in required do items[name]=nil player:SetAttribute(ingredientAttributes[name],false) end
+ state.sphere:Destroy() rolling[player]=nil player:SetAttribute("SnowSize",0)
+ player:SetAttribute("WinterMessage","Снеговик готов! Можно собрать ещё одного")
+end)
+local arena=part("Снежковая площадка",Vector3.new(35,0.2,30),Vector3.new(-40,0.2,43),Color3.fromRGB(206,229,243),Enum.Material.Snow)
+sign(arena,"СНЕЖКОВАЯ БИТВА • УРОН 15\nВозьми снежок • нажми, чтобы бросить")
+local remote=Instance.new("RemoteEvent")
+remote.Name,remote.Parent="ThrowSnowball",ReplicatedStorage
+local lastThrow={}
+local pile=ball("Гора снежков",5,Vector3.new(-40,1.5,43),snow)
+for i=1,12 do
+ local a=i*math.pi*2/12
+ ball("Запас снежков",1.2,Vector3.new(-40+math.cos(a)*2.8,0.7+(i%3)*0.45,43+math.sin(a)*2.8),snow)
+end
+prompt(pile,"Взять снежки",function(player)
+ if player.Backpack:FindFirstChild("Снежки") or (player.Character and player.Character:FindFirstChild("Снежки")) then return end
+ local tool=Instance.new("Tool")
+ tool.Name,tool.RequiresHandle,tool.CanBeDropped="Снежки",true,false
+ local handle=Instance.new("Part")
+ handle.Name,handle.Size,handle.Shape="Handle",Vector3.new(0.85,0.85,0.85),Enum.PartType.Ball
+ handle.Color,handle.CanCollide,handle.Massless,handle.CanQuery=snow,false,true,false
+ handle.Parent=tool
+ tool.Parent=player.Backpack
+end)
+for i=1,3 do
+ local target=ball("Мишень для снежков",4,Vector3.new(-55+(i-1)*15,5,25),i%2==0 and red or gold)
+ target:SetAttribute("SnowTarget",true)
+ part("Стойка мишени",Vector3.new(0.5,3.5,0.5),target.Position-Vector3.new(0,3,0),green)
+end
+remote.OnServerEvent:Connect(function(player,target)
+ if typeof(target)~="Vector3" or target.X~=target.X or target.Y~=target.Y or target.Z~=target.Z or target.Magnitude>100000 then return end
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ if not root or not character:FindFirstChild("Снежки") or (lastThrow[player] and os.clock()-lastThrow[player]<0.85) then return end
+ local origin=root.Position+Vector3.new(0,1.5,0)
+ local direction=target-origin
+ if direction.Magnitude<0.1 then return end
+ lastThrow[player]=os.clock()
+ origin+=direction.Unit*2
+ sound(root,"rbxasset://sounds/action_jump.mp3",0.6)
+ local projectile=ball("Летящий снежок",1.2,origin,snow)
+ projectile.CanCollide,projectile.CanQuery=false,false
+ local a0,a1=Instance.new("Attachment"),Instance.new("Attachment")
+ a0.Position,a1.Position=Vector3.new(-0.25,0,0),Vector3.new(0.25,0,0)
+ a0.Parent,a1.Parent=projectile,projectile
+ local trail=Instance.new("Trail")
+ trail.Attachment0,trail.Attachment1,trail.Lifetime=a0,a1,0.35
+ trail.FaceCamera=true
+ trail.LightEmission=0.6
+ trail.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0.4),NumberSequenceKeypoint.new(1,1)})
+ trail.Parent=projectile
+ local velocity=direction.Unit*105+Vector3.new(0,12,0)
+ local params=RaycastParams.new()
+ params.FilterType=Enum.RaycastFilterType.Exclude
+ params.FilterDescendantsInstances={character,projectile}
+ task.spawn(function()
+  local age=0
+  while projectile.Parent and age<3 do
+   local dt=RunService.Heartbeat:Wait()
+   age+=dt
+   local move=velocity*dt
+   local hit=workspace:Raycast(projectile.Position,move,params)
+   if hit then
+    local victim=hit.Instance:FindFirstAncestorOfClass("Model")
+    local humanoid=victim and victim:FindFirstChildOfClass("Humanoid")
+    if humanoid and victim~=character and humanoid.Health>0 then humanoid:TakeDamage(15) end
+    local mark=ball("Место попадания",0.2,hit.Position+hit.Normal*0.08,snow)
+    mark.Size=Vector3.new(1.8,0.12,1.8)
+    mark.CFrame=CFrame.lookAt(hit.Position+hit.Normal*0.08,hit.Position+hit.Normal)*CFrame.Angles(math.pi/2,0,0)
+    mark.CanCollide,mark.CanQuery=false,false
+    Debris:AddItem(mark,8)
+    projectile.Position=hit.Position
+    projectile.Transparency=1
+    local puff=Instance.new("ParticleEmitter")
+    puff.Texture="rbxasset://textures/particles/sparkles_main.dds"
+    puff.Rate,puff.Lifetime,puff.Speed=0,NumberRange.new(0.2,0.45),NumberRange.new(4,9)
+    puff.SpreadAngle=Vector2.new(180,180)
+    puff.Size=NumberSequence.new(0.2)
+    puff.Parent=projectile
+    puff:Emit(18)
+    for layer=1,2 do
+     local crunch=Instance.new("Sound")
+     crunch.SoundId,crunch.Volume,crunch.RollOffMaxDistance="rbxasset://sounds/action_footsteps_plastic.mp3",0.45/layer,55
+     crunch.PlaybackSpeed=layer==1 and 0.85 or 1.6
+     crunch.TimePosition=0.03*layer
+     crunch.Parent=projectile
+     local equalizer=Instance.new("EqualizerSoundEffect")
+     equalizer.LowGain,equalizer.MidGain,equalizer.HighGain=-14,4,-2
+     equalizer.Parent=crunch
+     crunch:Play()
+     task.delay(0.15,function() if crunch.Parent then crunch:Stop() end end)
+    end
+    if hit.Instance:GetAttribute("SnowTarget") then
+     local original=hit.Instance.Color
+     hit.Instance.Color=snow
+     task.delay(0.4,function() if hit.Instance.Parent then hit.Instance.Color=original end end)
+    end
+    Debris:AddItem(projectile,1)
+    return
+   end
+   projectile.Position+=move
+   velocity+=Vector3.new(0,-workspace.Gravity*0.28*dt,0)
+  end
+  projectile:Destroy()
+ end)
+end)
+Players.PlayerRemoving:Connect(function(player)
+ lastThrow[player],riding[player],inventories[player]=nil,nil,nil
+ if rolling[player] then rolling[player].sphere:Destroy() rolling[player]=nil end
+ if builtByPlayer[player] then
+  for _,model in builtByPlayer[player] do snowmanPlots[model:GetAttribute("PlotIndex")]=nil model:Destroy() end
+  builtByPlayer[player]=nil
+ end
+ slipStates[player]=nil
+ lastSkateColor[player]=nil wasOnIce[player]=nil
+ if companions[player] then waitForPlayer(companions[player]) end
+ carrotCooldown[player]=nil
+
+end)
+
+-- Alpine expansion: a large continuous slope, four rentals and a working cable car.
+local mountain={x=390,topZ=-215,bottomZ=145,height=140,length=360}
+local slopeAngle=math.atan(mountain.height/mountain.length)
+for i=0,23 do
+ local t=(i+0.5)/24
+ local h=math.max(2,mountain.height*(1-t)-5)
+ part("Скальный массив горы",Vector3.new(160,h,15.1),Vector3.new(mountain.x,h/2,mountain.topZ+t*mountain.length),Color3.fromRGB(149,163,180),Enum.Material.Slate)
+end
+local alpineSlope=part("Большой снежный склон",Vector3.new(160,4,math.sqrt(140^2+360^2)),Vector3.new(mountain.x,70,-35),snow,Enum.Material.Snow)
+alpineSlope.Orientation=Vector3.new(math.deg(slopeAngle),0,0)
+part("Вершина горы",Vector3.new(175,3,30),Vector3.new(mountain.x,140,mountain.topZ-10),snow,Enum.Material.Snow)
+part("Площадка торможения",Vector3.new(170,0.4,145),Vector3.new(mountain.x,0.2,215),snow,Enum.Material.Snow)
+local mountainApproach=part("Плавный въезд на гору",Vector3.new(170,0.3,math.sqrt(50^2+3.7^2)),Vector3.new(390,2.1,165),snow,Enum.Material.Snow)
+mountainApproach.Orientation=Vector3.new(math.deg(math.atan(3.7/50)),0,0)
+for _,side in ipairs({-1,1}) do
+ local rail=part("Ограждение большого склона",Vector3.new(1,3,math.sqrt(140^2+360^2)),alpineSlope.Position+Vector3.new(side*79,3,0),red)
+ rail.Orientation=alpineSlope.Orientation
+end
+local topStation=Vector3.new(285,142,-225)
+local lowerStation=Vector3.new(285,3,155)
+for _,station in {lowerStation,topStation} do
+ part("Платформа фуникулёра",Vector3.new(24,2,18),station-Vector3.new(0,1.5,0),Color3.fromRGB(102,82,74),Enum.Material.WoodPlanks)
+end
+part("Мост к прокату",Vector3.new(45,2,12),Vector3.new(312,140,-225),snow)
+for i=0,6 do
+ local point=lowerStation:Lerp(topStation,i/6)
+ part("Опора фуникулёра",Vector3.new(1.5,point.Y+10,1.5),Vector3.new(285,(point.Y+10)/2,point.Z),Color3.fromRGB(82,99,115),Enum.Material.Metal)
+end
+rod("Трос фуникулёра",lowerStation+Vector3.new(0,11,0),topStation+Vector3.new(0,11,0),0.15,Color3.fromRGB(54,65,78),world,Enum.Material.Metal)
+local cableCar=Instance.new("Model") cableCar.Name,cableCar.Parent="Фуникулёр",world
+local cabinFloor=part("Кабина фуникулёра",Vector3.new(12,0.8,10),lowerStation,red,nil,cableCar)
+cableCar.PrimaryPart=cabinFloor
+part("Крыша кабины",Vector3.new(12,0.6,10),lowerStation+Vector3.new(0,8,0),red,nil,cableCar)
+rod("Подвес кабины",lowerStation+Vector3.new(0,8,0),lowerStation+Vector3.new(0,11,0),0.2,gold,cableCar,Enum.Material.Metal)
+for _,side in ipairs({-1,1}) do
+ local glass=part("Окно кабины",Vector3.new(0.2,6,9),lowerStation+Vector3.new(side*5.8,4,0),Color3.fromRGB(177,220,237),Enum.Material.Glass,cableCar)
+ glass.Transparency=0.65
+end
+for _,x in ipairs({-5.6,5.6}) do
+ for _,z in ipairs({-4.6,4.6}) do part("Стойка кабины",Vector3.new(0.4,8,0.4),lowerStation+Vector3.new(x,4,z),gold,Enum.Material.Metal,cableCar) end
+end
+local cabinSeats={}
+for _,x in ipairs({-3,3}) do for _,z in ipairs({-2.5,2.5}) do
+ local seat=Instance.new("Seat")
+ seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место в фуникулёре",Vector3.new(2.5,0.4,2.5),true,false
+ seat.Position,seat.Color,seat.Parent=lowerStation+Vector3.new(x,1.1,z),green,cableCar
+ table.insert(cabinSeats,seat)
+end end
+local function boardCabin(player)
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not humanoid or humanoid.Health<=0 or humanoid.Sit then return end
+ local root=character:FindFirstChild("HumanoidRootPart")
+ if not root or (root.Position-cabinFloor.Position).Magnitude>20 then
+  player:SetAttribute("WinterMessage","Дождись кабины на этой платформе") return
+ end
+ if (cabinFloor.Position-lowerStation).Magnitude>9 and (cabinFloor.Position-topStation).Magnitude>9 then
+  player:SetAttribute("WinterMessage","Кабина в пути. Подожди у платформы") return
+ end
+ for _,seat in cabinSeats do if not seat.Occupant then
+  removeSkates(player)
+  character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid)
+  player:SetAttribute("WinterMessage","Фуникулёр • четыре места • дождись остановки на вершине") return
+ end end
+ player:SetAttribute("WinterMessage","Все четыре места заняты. Подожди следующий рейс")
+end
+for index,station in {lowerStation,topStation} do
+ local post=part("Посадка на фуникулёр",Vector3.new(2,3,2),station+Vector3.new(8,1,0),green)
+ sign(post,index==1 and "ФУНИКУЛЁР • E — сесть" or "ФУНИКУЛЁР • спуск в деревню")
+ prompt(post,"Сесть в кабину",boardCabin)
+end
+local cabinTime=0
+RunService.Heartbeat:Connect(function(dt)
+ cabinTime=(cabinTime+dt)%44
+ local t
+ if cabinTime<5 then t=0 elseif cabinTime<22 then t=(cabinTime-5)/17 elseif cabinTime<27 then t=1 else t=1-(cabinTime-27)/17 end
+ cableCar:PivotTo(CFrame.new(lowerStation:Lerp(topStation,t)))
+end)
+local mountainRiders={}
+local mountainControls={}
+local mountainControl=Instance.new("RemoteEvent")
+mountainControl.Name,mountainControl.Parent="MountainControl",ReplicatedStorage
+mountainControl.OnServerEvent:Connect(function(player,input,drift)
+ local control=mountainControls[player]
+ if not control or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or math.abs(input.X)>1 or math.abs(input.Y)>1 then return end
+ control.steer,control.throttle,control.inputUntil,control.drift=input.X,input.Y,os.clock()+0.5,drift==true
+end)
+local function stopMountainControl(player)
+ mountainControls[player]=nil
+ player:SetAttribute("MountainDriving",false)
+ player:SetAttribute("MountainSpeed",nil)
+end
+local mountainVehicles={}
+local leaveMountain=Instance.new("RemoteEvent")
+leaveMountain.Name,leaveMountain.Parent="LeaveMountainRide",ReplicatedStorage
+local function clearMountainRider(player)
+ local state=mountainRiders[player]
+ if not state then return end
+ mountainRiders[player]=nil
+ stopMountainControl(player)
+ if state.weld then state.weld:Destroy() end
+ if state.onLeave then state.onLeave() end
+ local humanoid=state.humanoid
+ if humanoid.Parent then humanoid.PlatformStand=false humanoid.WalkSpeed=16 humanoid.AutoRotate=true humanoid.Sit=false humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+ player:SetAttribute("MountainGear",nil)
+ if player.Character and humanoid.Health>0 then player.Character:PivotTo(state.root.CFrame*CFrame.new(5,4,0)) end
+end
+leaveMountain.OnServerEvent:Connect(clearMountainRider)
+for index,kind in {"Двухместные санки","Ватрушка","Лыжи","Сноуборд"} do
+ local laneX=330+(index-1)*38
+ local home=Vector3.new(laneX,144,-215)
+ local vehicle=Instance.new("Model") vehicle.Name,vehicle.Parent=kind,world
+ local carrier=part("Основа снаряжения",Vector3.new(kind=="Двухместные санки" and 6.4 or 3.5,0.5,5),home,index%2==0 and red or green,Enum.Material.Wood,vehicle)
+ carrier.CanCollide=false vehicle.PrimaryPart=carrier
+ if kind=="Ватрушка" then
+  carrier.Transparency=1
+  for ring=0,11 do
+   local a=ring*math.pi/6
+   round("Надувной борт ватрушки",Vector3.new(1.8,1.1,1.8),home+Vector3.new(math.sin(a)*1.8,0,math.cos(a)*1.8),ring%2==0 and red or gold,vehicle)
+  end
+ elseif kind=="Лыжи" then
+  carrier.Transparency=1
+  for _,side in ipairs({-1,1}) do part("Лыжа",Vector3.new(0.5,0.2,7),home+Vector3.new(side*0.7,0,0),gold,nil,vehicle) end
+ elseif kind=="Сноуборд" then
+  carrier.Size,carrier.Material=Vector3.new(1.6,0.25,6),Enum.Material.SmoothPlastic
+  for i=1,3 do part("Узор сноуборда",Vector3.new(1.65,0.06,0.25),home+Vector3.new(0,0.16,i-2),gold,nil,vehicle) end
+ else
+  for _,x in ipairs({-2.7,2.7}) do part("Полоз горных санок",Vector3.new(0.25,0.35,6),home+Vector3.new(x,-0.7,0),gold,Enum.Material.Metal,vehicle) end
+ end
+ local seats={}
+ if index<=2 then
+  for i=1,(index==1 and 2 or 1) do
+   local seat=Instance.new("Seat")
+   seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место на "..kind,Vector3.new(2.5,0.4,2.5),true,false
+   seat.Position,seat.Color,seat.Parent=home+Vector3.new(index==1 and (i==1 and -1.6 or 1.6) or 0,0.7,0),red,vehicle
+   table.insert(seats,seat)
+  end
+ end
+ local busy=false
+ local standingPlayer
+ local stationPost=part("Прокат: "..kind,Vector3.new(2,2,2),home+Vector3.new(0,0,-10),green)
+ sign(stationPost,kind.." • E — взять / сесть")
+ prompt(stationPost,"Взять: "..kind,function(player)
+  local character=player.Character
+  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if busy then player:SetAttribute("WinterMessage","Снаряжение на трассе. Верни свободное снаряжение кнопкой F у проката") return end
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or mountainRiders[player] then return end
+  removeSkates(player)
+  if #seats>0 then
+   for _,seat in seats do if not seat.Occupant then character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid) return end end
+   player:SetAttribute("WinterMessage","Места заняты")
+  elseif not standingPlayer then
+   standingPlayer=player
+   character:PivotTo(carrier.CFrame*CFrame.new(0,3.4,0))
+   local root=character:FindFirstChild("HumanoidRootPart")
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=carrier,root,root
+   humanoid.PlatformStand=true
+   mountainRiders[player]={weld=weld,humanoid=humanoid,root=carrier,vehicle=vehicle,onLeave=function() standingPlayer=nil end}
+   player:SetAttribute("MountainGear",kind)
+  end
+ end)
+ prompt(carrier,"Начать спуск • F",function(player)
+  if busy then return end
+  local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+  local aboard=standingPlayer==player
+  for _,seat in seats do if seat.Occupant==humanoid then aboard=true end end
+  if not aboard then return end
+  busy=true
+  task.spawn(function()
+   local control={steer=0,throttle=0,inputUntil=0,speed=62,vehicle=vehicle,lateral=0,drift=false}
+   mountainControls[player]=control
+   player:SetAttribute("MountainDriving",true)
+   local distance,x=0,laneX
+   while distance<360 do
+    local dt=math.min(RunService.Heartbeat:Wait(),0.1)
+    local active=standingPlayer==player
+    for _,seat in seats do if seat.Occupant==humanoid then active=true end end
+    if not active or humanoid.Health<=0 then stopMountainControl(player) control.steer,control.throttle=0,0 end
+    local steer,throttle=0,0
+    if mountainControls[player] and os.clock()<control.inputUntil then steer,throttle=control.steer,control.throttle end
+    local acceleration=throttle>0 and 38 or (throttle<0 and -90 or 6)
+    control.speed=math.clamp(control.speed+acceleration*dt,0,115)
+    distance=math.min(360,distance+control.speed*dt)
+    control.lateral+=(steer*32-control.lateral)*(1-math.exp(-(control.drift and 1.2 or 10)*dt))
+    x=math.clamp(x+control.lateral*math.min(control.speed/30,1)*dt,315,465)
+    local progress=distance/360
+    local point=Vector3.new(x,144-progress*140,-215+distance)
+    vehicle:PivotTo(CFrame.lookAt(point,point+Vector3.new(steer*(control.drift and 0.85 or 0.45),-140/360,1)))
+    if mountainControls[player] then player:SetAttribute("MountainSpeed",math.floor(control.speed)) end
+   end
+   stopMountainControl(player)
+   vehicle:PivotTo(CFrame.lookAt(Vector3.new(x,2,149),Vector3.new(x,2,170)))
+   for _,p in vehicle:GetDescendants() do if p:IsA("BasePart") and p~=carrier then
+    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=carrier,p,carrier
+    p.Anchored=false p.Massless=true
+   end end
+   carrier.CanCollide=true carrier.CustomPhysicalProperties=PhysicalProperties.new(1,0.16,0.05)
+   carrier.Anchored=false carrier:SetNetworkOwner(nil)
+   carrier.AssemblyLinearVelocity=Vector3.new(0,0,42)
+  end)
+ end,"F")
+ prompt(stationPost,"Вернуть свободное снаряжение • F",function()
+  if not busy then return end
+  for _,seat in seats do if seat.Occupant then return end end
+  for player,state in mountainRiders do if state.vehicle==vehicle then return end end
+  if carrier.AssemblyLinearVelocity.Magnitude>1 then return end
+  for _,weld in carrier:GetChildren() do if weld:IsA("WeldConstraint") then weld:Destroy() end end
+  for _,p in vehicle:GetDescendants() do if p:IsA("BasePart") then p.Anchored=true end end
+  vehicle:PivotTo(CFrame.new(home)) standingPlayer=nil busy=false
+ end,"F")
+ table.insert(mountainVehicles,{model=vehicle,seats=seats,kind=kind})
+end
+RunService.Heartbeat:Connect(function()
+ for player,state in mountainRiders do
+  if not player.Character or state.humanoid.Health<=0 or state.humanoid.Parent~=player.Character then clearMountainRider(player) end
+ end
+end)
+Players.PlayerRemoving:Connect(function(player) clearMountainRider(player) stopMountainControl(player) end)
+-- Add a friend seat to all earlier sleds, including the reindeer touring sleds.
+for _,sled in world:GetChildren() do
+ if sled:IsA("Model") and (sled.Name=="Санки" or sled.Name=="Прогулочные санки") and sled.PrimaryPart then
+  local base=sled.PrimaryPart
+  local passenger=Instance.new("Seat")
+  passenger.Name,passenger.Size,passenger.Anchored,passenger.CanTouch="Место друга",Vector3.new(3,0.5,3),base.Anchored,false
+  passenger.CFrame,passenger.Color,passenger.Parent=base.CFrame*CFrame.new(3.2,0,0),red,sled
+  if not base.Anchored then local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=base,passenger,passenger end
+  local bench=part("Двухместная платформа санок",Vector3.new(6.6,0.25,3.5),Vector3.zero,green,Enum.Material.Wood,sled)
+  bench.CFrame,bench.Anchored=base.CFrame*CFrame.new(1.6,-0.35,0),base.Anchored
+  if not base.Anchored then local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=base,bench,bench end
+  local outerRunner=part("Широкий полоз",Vector3.new(0.25,0.3,4.5),Vector3.zero,gold,Enum.Material.Metal,sled)
+  outerRunner.CFrame,outerRunner.Anchored=base.CFrame*CFrame.new(4.5,-0.7,0),base.Anchored
+  outerRunner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.05)
+  if not base.Anchored then local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=base,outerRunner,outerRunner end
+  prompt(passenger,"Друг: сесть • прыжок — выйти",function(player)
+   local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+   if not humanoid or humanoid.Health<=0 or humanoid.Sit or passenger.Occupant then return end
+   removeSkates(player) character:PivotTo(passenger.CFrame*CFrame.new(0,2,0)) passenger:Sit(humanoid)
+  end)
+ end
+end
+
+local alpineRandom=Random.new(1742)
+for _=1,40 do tree(alpineRandom:NextNumber(-510,-335),alpineRandom:NextNumber(-395,395),alpineRandom:NextNumber(12,21)) end
+
+local mountainGuide=part("Указатель к горе",Vector3.new(0.7,4,0.7),Vector3.new(10,2,55),green,Enum.Material.Wood)
+sign(mountainGuide,"БОЛЬШАЯ ГОРА →\nФуникулёр справа от деревни",Vector3.new(0,4,0))
+
+-- Two-seat vehicles at spawn. Server physics keeps steering authority with the driver.
+local spawnVehicles={}
+local groundDrivers={}
+local vehicleDriftParticles={}
+local groundInput=Instance.new("RemoteEvent")
+groundInput.Name,groundInput.Parent="GroundVehicleControl",ReplicatedStorage
+groundInput.OnServerEvent:Connect(function(player,input,drift)
+ local vehicle=groundDrivers[player]
+ if not vehicle or typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or input.Z~=input.Z
+  or math.abs(input.X)>1 or math.abs(input.Y)>1 or math.abs(input.Z)>1 then return end
+ if not vehicle.driver.Occupant or vehicle.driver.Occupant.Health<=0 or vehicle.driver.Occupant.Parent~=player.Character then return end
+ vehicle.steer,vehicle.throttle,vehicle.boost,vehicle.untilInput,vehicle.drift=input.X,input.Y,input.Z>0,os.clock()+0.5,drift==true
+end)
+for index,name in {"Снегоход","Реактивные сани","Снежный мотоцикл","Мотоцикл BMW","Снежная BMW"} do
+ local bike=index==3 or index==4
+ local position=Vector3.new((index-3)*17,2,85)
+ local model=Instance.new("Model") model.Name,model.Parent=name,world
+ local root=part("Шасси",Vector3.new(bike and 1.6 or (index==5 and 5.8 or 4.6),1,8),position,index>=4 and Color3.fromRGB(43,91,151) or (index==1 and green or red),Enum.Material.Metal,model)
+ model.PrimaryPart=root
+ root.CustomPhysicalProperties=PhysicalProperties.new(1,0.15,0.03)
+ local function detail(name,size,offset,color,material)
+  local p=part(name,size,position+offset,color,material or Enum.Material.SmoothPlastic,model)
+  p.CanCollide=false
+  return p
+ end
+ for _,side in ipairs(bike and {} or {-1,1}) do
+  local runner=detail("Лыжа шасси",Vector3.new(0.65,0.4,7.5),Vector3.new(side*2,-1.1,0),Color3.fromRGB(117,149,172),Enum.Material.Metal)
+  runner.CanCollide=true runner.CustomPhysicalProperties=PhysicalProperties.new(1,0.12,0.03)
+  detail("Крепление лыжи",Vector3.new(0.4,1,2),Vector3.new(side*2,-0.5,0),gold,Enum.Material.Metal)
+ end
+ local hood=detail("Обтекаемый капот",Vector3.new(bike and 1.5 or 4.4,1.6,3.4),Vector3.new(0,0.7,-2.5),index==1 and green or red)
+ hood.Shape=Enum.PartType.Ball
+ local lightPanel=detail("Фара",Vector3.new(2,0.4,0.2),Vector3.new(0,0.7,-4.28),gold,Enum.Material.Neon)
+ local headlight=Instance.new("SpotLight") headlight.Face,headlight.Range,headlight.Brightness,headlight.Parent=Enum.NormalId.Front,35,2,lightPanel
+ local driver,passenger=Instance.new("Seat"),Instance.new("Seat")
+ for seatIndex,seat in {driver,passenger} do
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch="Место "..(seatIndex==1 and "водителя" or "пассажира"),Vector3.new(bike and 1.2 or 2.3,0.4,2.4),true,false
+  seat.Position,seat.Color,seat.Parent=position+Vector3.new((index==1 or bike) and 0 or (seatIndex==1 and -1.2 or 1.2),1.1,(index==1 or bike) and (seatIndex==1 and -0.4 or 2) or 0.5),Color3.fromRGB(48,47,58),model
+ end
+ detail("Руль",Vector3.new(2.4,0.2,0.2),driver.Position-position+Vector3.new(0,1,-1.4),gold,Enum.Material.Metal)
+ local jetFires={}
+ if index==2 then
+  for _,side in ipairs({-1,1}) do
+   local nozzle=detail("Реактивное сопло",Vector3.new(1.1,1.1,2),Vector3.new(side*1.4,0.4,4),Color3.fromRGB(73,88,106),Enum.Material.Metal)
+   nozzle.Shape=Enum.PartType.Cylinder nozzle.Orientation=Vector3.new(0,90,0)
+   local fire=Instance.new("Fire")
+   fire.Size,fire.Heat,fire.Color,fire.SecondaryColor,fire.Enabled,fire.Parent=2,2,Color3.fromRGB(255,142,52),gold,false,nozzle
+   table.insert(jetFires,fire)
+  end
+ elseif index==1 then
+  detail("Гусеница",Vector3.new(2.8,0.7,4),Vector3.new(0,-0.9,1.4),Color3.fromRGB(37,42,48),Enum.Material.SmoothPlastic)
+ end
+ if bike then
+  if index==3 then
+   local ski=detail("Передняя снежная лыжа",Vector3.new(1.1,0.35,4),Vector3.new(0,-1,-2.5),gold,Enum.Material.Metal)
+   ski.CanCollide=true
+   local rearTrack=detail("Задняя гусеница мотоцикла",Vector3.new(1.4,0.9,3.5),Vector3.new(0,-0.7,2),Color3.fromRGB(31,34,40))
+   rearTrack.CanCollide=true
+  else
+   for _,z in ipairs({-2.7,2.6}) do
+    local wheel=detail("Колесо BMW",Vector3.new(0.8,2.2,2.2),Vector3.new(0,-0.5,z),Color3.fromRGB(27,31,38))
+    wheel.Shape,wheel.CanCollide=Enum.PartType.Cylinder,true
+    local hub=detail("Диск колеса",Vector3.new(0.85,1.25,1.25),Vector3.new(0,-0.5,z),Color3.fromRGB(170,182,197),Enum.Material.Metal)
+    hub.Shape=Enum.PartType.Cylinder
+   end
+  end
+  for _,z in ipairs({-2.7,2.6}) do
+   detail("Вилка мотоцикла",Vector3.new(0.3,1.8,0.3),Vector3.new(0,0,z),gold,Enum.Material.Metal)
+  end
+  detail("Бак мотоцикла",Vector3.new(1.8,1,2.2),Vector3.new(0,1.1,-1.2),Color3.fromRGB(43,91,151))
+ elseif index==5 then
+  detail("Кузов снежной BMW",Vector3.new(5.8,1.5,7),Vector3.new(0,0.65,0),Color3.fromRGB(225,235,245))
+  local roof=detail("Крыша BMW",Vector3.new(5.2,0.35,4),Vector3.new(0,4.7,0.5),Color3.fromRGB(36,63,102))
+  for _,side in ipairs({-1,1}) do
+   for _,z in ipairs({-1.5,2.5}) do detail("Стойка крыши",Vector3.new(0.2,3.5,0.2),Vector3.new(side*2.5,2.9,z),Color3.fromRGB(36,63,102)) end
+   local grille=detail("Двойная решётка BMW",Vector3.new(1.2,0.7,0.2),Vector3.new(side*0.75,0.7,-4.3),Color3.fromRGB(26,32,42))
+  end
+ end
+ if index>=4 then
+  local badge=detail("Эмблема BMW",Vector3.new(0.4,0.4,0.05),Vector3.new(0,1.5,-4.3),Color3.fromRGB(70,136,218))
+  local tag=Instance.new("SurfaceGui") tag.Face,tag.CanvasSize,tag.Parent=Enum.NormalId.Front,Vector2.new(128,64),badge
+  local text=Instance.new("TextLabel") text.Size,text.BackgroundTransparency,text.Text,text.TextSize=UDim2.fromScale(1,1),1,"BMW",42
+  text.TextColor3,text.Parent=snow,tag
+ end
+ local spray=Instance.new("ParticleEmitter")
+ spray.Name,spray.Texture,spray.Enabled="Снег дрифта","rbxasset://textures/particles/sparkles_main.dds",false
+ spray.Rate,spray.Speed,spray.Lifetime,spray.Size=35,NumberRange.new(3,8),NumberRange.new(0.2,0.6),NumberSequence.new(0.15)
+ spray.Parent=root
+ for _,p in model:GetDescendants() do if p:IsA("BasePart") and p~=root then
+  p.Anchored,p.Massless=false,true
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=root,p,p
+ end end
+ root.Anchored=false root:SetNetworkOwner(nil)
+ local gyro=Instance.new("BodyGyro")
+ gyro.Name,gyro.MaxTorque,gyro.P,gyro.D="Стабилизация транспорта",Vector3.new(80000,80000,80000),20000,800
+ gyro.CFrame,gyro.Parent=CFrame.new(),root
+ local drive=Instance.new("BodyVelocity")
+ drive.Name,drive.P,drive.MaxForce,drive.Velocity="Привод транспорта",10000,Vector3.zero,Vector3.zero
+ drive.Parent=root
+ local vehicle={model=model,root=root,driver=driver,passenger=passenger,drive=drive,speed=0,yaw=0,steer=0,throttle=0,boost=false,untilInput=0,fires=jetFires,velocity=Vector3.zero,drift=false,spray=spray,maxSpeed=({55,90,68,78,85})[index]}
+ table.insert(spawnVehicles,vehicle)
+ local function board(player,seat)
+  local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or seat.Occupant then return end
+  removeSkates(player)
+  character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid)
+ end
+ prompt(driver,"Водитель: сесть",function(player) board(player,driver) end)
+ prompt(passenger,"Пассажир: сесть",function(player) board(player,passenger) end,"F")
+ sign(root,name.." • два места\nW/S — скорость • A/D — поворот",Vector3.new(0,5,0))
+ local function syncDriver()
+  local occupant=driver.Occupant
+  local nextPlayer=occupant and Players:GetPlayerFromCharacter(occupant.Parent)
+  if nextPlayer==vehicle.player then return end
+  if vehicle.player then
+   groundDrivers[vehicle.player]=nil vehicle.player:SetAttribute("GroundDriving",nil) vehicle.player:SetAttribute("GroundSpeed",nil)
+  end
+  vehicle.player=nil vehicle.steer,vehicle.throttle,vehicle.boost=0,0,false
+  local humanoid=driver.Occupant
+  local player=humanoid and Players:GetPlayerFromCharacter(humanoid.Parent)
+  if player then
+   vehicle.player=player groundDrivers[player]=vehicle root:SetNetworkOwner(nil)
+   player:SetAttribute("GroundDriving",name)
+   player:SetAttribute("WinterMessage",name..": W/S — разгон и торможение, A/D — поворот, прыжок — выйти"..(index==2 and ", Shift — форсаж" or ""))
+  end
+ end
+ vehicle.syncDriver=syncDriver
+ driver:GetPropertyChangedSignal("Occupant"):Connect(syncDriver)
+ passenger:GetPropertyChangedSignal("Occupant"):Connect(function() root:SetNetworkOwner(nil) end)
+end
+RunService.Heartbeat:Connect(function(dt)
+ dt=math.min(dt,0.1)
+ for _,vehicle in spawnVehicles do
+  vehicle.syncDriver()
+  local steer,throttle,boost=0,0,false
+  if vehicle.player and os.clock()<vehicle.untilInput then steer,throttle,boost=vehicle.steer,vehicle.throttle,vehicle.boost end
+  if throttle~=0 then vehicle.speed=vehicle.speed+throttle*36*dt
+  else vehicle.speed=vehicle.speed*math.exp(-(vehicle.drift and 0.45 or 2)*dt) end
+  vehicle.speed=math.clamp(vehicle.speed,-16,boost and vehicle.maxSpeed==90 and 125 or vehicle.maxSpeed)
+  local drifting=vehicle.drift and vehicle.player~=nil and os.clock()<vehicle.untilInput and math.abs(vehicle.speed)>8
+  vehicle.yaw-=steer*(drifting and 2.6 or 1.7)*dt*math.min(math.abs(vehicle.speed)/12,1)*(vehicle.speed>=0 and 1 or -1)
+  local direction=Vector3.new(-math.sin(vehicle.yaw),0,-math.cos(vehicle.yaw))
+  local powered=vehicle.player and vehicle.driver.Occupant and vehicle.driver.Occupant.Health>0
+  local force=powered and math.max(50000,vehicle.root.AssemblyMass*400) or 0
+  vehicle.drive.MaxForce=Vector3.new(force,0,force)
+  local desired=direction*vehicle.speed
+  vehicle.velocity=vehicle.velocity:Lerp(desired,1-math.exp(-(drifting and 1.35 or 12)*dt))
+  local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude
+  local excluded={vehicle.model}
+  if vehicle.player and vehicle.player.Character then table.insert(excluded,vehicle.player.Character) end
+  if vehicle.passenger.Occupant then table.insert(excluded,vehicle.passenger.Occupant.Parent) end
+  params.FilterDescendantsInstances=excluded
+  local ground=workspace:Raycast(vehicle.root.Position+Vector3.new(0,3,0),Vector3.new(0,-12,0),params)
+  local ahead=workspace:Raycast(vehicle.root.Position+direction*3.5+Vector3.new(0,4,0),Vector3.new(0,-14,0),params)
+  local normal=(ahead and ahead.Normal) or (ground and ground.Normal) or Vector3.new(0,1,0)
+  local tangent=direction-normal*direction:Dot(normal)
+  if tangent.Magnitude<0.01 then tangent=direction end
+  vehicle.drive.Velocity=vehicle.velocity
+  vehicle.root:FindFirstChild("Стабилизация транспорта").CFrame=CFrame.lookAt(Vector3.zero,tangent,normal)
+  vehicle.spray.Enabled=drifting and math.abs(steer)>0.1
+  vehicle.model:SetAttribute("Drifting",vehicle.spray.Enabled)
+  for _,fire in vehicle.fires do fire.Enabled=vehicle.speed>5 fire.Size=boost and 4 or 2 end
+  if vehicle.player then vehicle.player:SetAttribute("GroundSpeed",math.floor(math.abs(vehicle.speed))) end
+  if math.abs(vehicle.root.Position.X)>880 or math.abs(vehicle.root.Position.Z)>680 then
+   vehicle.speed=0
+   vehicle.model:PivotTo(CFrame.new(math.clamp(vehicle.root.Position.X,-870,870),3,math.clamp(vehicle.root.Position.Z,-670,670)))
+  end
+ end
+end)
+Players.PlayerRemoving:Connect(function(player)
+ local vehicle=groundDrivers[player]
+ if vehicle then vehicle.player=nil vehicle.throttle,vehicle.steer=0,0 end
+ groundDrivers[player]=nil
+end)
+
+local function setupAirport()
+-- Airport expansion: two flyable aircraft and automatic parachute ejection.
+local airportCenter=Vector3.new(-650,0,0)
+local runway=part("Взлётная полоса",Vector3.new(130,0.4,700),Vector3.new(-650,0.2,0),Color3.fromRGB(63,76,91),Enum.Material.Asphalt)
+for z=-300,300,35 do
+ if math.abs(z)<250 then part("Разметка полосы",Vector3.new(3,0.06,18),Vector3.new(-650,0.44,z),snow) end
+ for _,x in ipairs({-717,-583}) do
+  local lamp=part("Огонь ВПП",Vector3.new(0.6,0.5,0.6),Vector3.new(x,0.7,z),gold,Enum.Material.Neon)
+  light(lamp,gold,7,0.4)
+ end
+end
+for _,side in ipairs({-1,1}) do
+ part("Краевая линия ВПП",Vector3.new(1.3,0.06,700),Vector3.new(-650+side*62,0.46,0),snow)
+ for i=-3,4 do
+  part("Порог полосы",Vector3.new(4,0.06,19),Vector3.new(-650+i*8-4,0.46,side*330),snow)
+ end
+ local plate=part("Номер полосы",Vector3.new(22,0.04,32),Vector3.new(-650,0.49,side*285),Color3.fromRGB(63,76,91))
+ local gui=Instance.new("SurfaceGui") gui.Face,gui.CanvasSize,gui.Parent=Enum.NormalId.Top,Vector2.new(160,240),plate
+ local label=Instance.new("TextLabel")
+ label.Size,label.BackgroundTransparency,label.Text,label.TextSize=UDim2.fromScale(1,1),1,side<0 and "19" or "01",150
+ label.TextColor3,label.Font,label.Rotation,label.Parent=snow,Enum.Font.GothamBold,side<0 and 180 or 0,gui
+ for _,x in ipairs({-18,18}) do part("Зона приземления",Vector3.new(6,0.06,27),Vector3.new(-650+x,0.46,side*185),snow) end
+end
+part("Перрон аэропорта",Vector3.new(150,0.3,155),Vector3.new(-740,0.22,240),Color3.fromRGB(109,121,137),Enum.Material.Concrete)
+part("Рулёжная линия",Vector3.new(125,0.05,1.3),Vector3.new(-712,0.44,230),gold)
+part("Аэропорт: пол",Vector3.new(60,1,55),Vector3.new(-800,0.5,230),Color3.fromRGB(117,130,148),Enum.Material.Concrete)
+part("Аэропорт: крыша",Vector3.new(64,1,59),Vector3.new(-800,17,230),snow)
+for _,x in ipairs({-830,-770}) do
+ local wall=part("Стеклянная стена аэропорта",Vector3.new(1,16,55),Vector3.new(x,8.5,230),Color3.fromRGB(149,197,220),Enum.Material.Glass)
+ wall.Transparency=0.3
+end
+part("Задняя стена терминала",Vector3.new(60,16,1),Vector3.new(-800,8.5,202.5),green)
+local airportSign=part("АЭРОПОРТ",Vector3.new(1,3,1),Vector3.new(-800,18,258),green)
+sign(airportSign,"ЗИМНИЙ АЭРОПОРТ\nСамолёты • полёты • парашюты",Vector3.new(0,4,0))
+part("Диспетчерская вышка",Vector3.new(9,36,9),Vector3.new(-780,18,135),Color3.fromRGB(113,129,151),Enum.Material.Concrete)
+local tower=part("Диспетчерская",Vector3.new(22,8,20),Vector3.new(-780,40,135),Color3.fromRGB(141,192,215),Enum.Material.Glass)
+tower.Transparency=0.25
+part("Крыша вышки",Vector3.new(25,1,23),Vector3.new(-780,44.5,135),snow)
+for _,path in {{Vector3.new(60,0.18,145),Vector3.new(60,0.18,350)},{Vector3.new(60,0.18,350),Vector3.new(-760,0.18,350)},{Vector3.new(-760,0.18,350),Vector3.new(-760,0.18,230)}} do
+ local road=part("Дорога в аэропорт",Vector3.new(12,0.25,(path[2]-path[1]).Magnitude),path[1]:Lerp(path[2],0.5),Color3.fromRGB(154,178,201),Enum.Material.Snow)
+ road.CFrame=CFrame.lookAt(road.Position,path[2])
+end
+local airportGuide=part("Указатель в аэропорт",Vector3.new(0.6,4,0.6),Vector3.new(-10,2,55),green)
+sign(airportGuide,"АЭРОПОРТ ←\nДорога через южную часть парка",Vector3.new(0,4,0))
+local airportStaff={}
+for _,job in {
+ {"Регистратор",Vector3.new(-800,3,240),"E у кресла — пилот, F — пассажир. Самолёты стоят на перроне у терминала."},
+ {"Диспетчер",Vector3.new(-780,3,158),"W — разгон. Колесо вниз — вверх, колесо вверх — вниз. Для взлёта нужна скорость больше 40."},
+ {"Авиамеханик",Vector3.new(-705,3,275),"Если самолёт остался далеко, верни пустой борт кнопкой возле стоянки. С людьми внутри возврат запрещён."},
+ {"Маршал перрона",Vector3.new(-705,3,300),"Следуй жёлтой линии к полосе. Парашют открывается кнопкой R или прыжком из самолёта."},
+ {"Охрана аэропорта",Vector3.new(-760,3,340),"Добро пожаловать! Не оставляй машину на взлётной полосе."},
+} do
+ local model=Instance.new("Model") model.Name,model.Parent=job[1],world
+ local center=job[2]
+ local body=round("Форма сотрудника",Vector3.new(2.2,2.6,1.3),center,Color3.fromRGB(44,73,110),model)
+ model.PrimaryPart=body
+ round("Голова сотрудника",Vector3.new(1.45,1.6,1.45),center+Vector3.new(0,2.1,0),Color3.fromRGB(235,194,162),model)
+ for _,side in ipairs({-1,1}) do
+  rod("Брюки сотрудника",center+Vector3.new(side*0.55,-0.8,0),center+Vector3.new(side*0.55,-2.2,0),0.33,Color3.fromRGB(39,49,67),model,Enum.Material.Fabric)
+  round("Ботинок сотрудника",Vector3.new(0.8,0.6,1.2),center+Vector3.new(side*0.55,-2.4,0.2),Color3.fromRGB(29,34,42),model)
+  rod("Рукав сотрудника",center+Vector3.new(side*1,0.8,0),center+Vector3.new(side*1.5,-0.6,0.2),0.32,Color3.fromRGB(44,73,110),model,Enum.Material.Fabric)
+  round("Кисть сотрудника",Vector3.new(0.5,0.6,0.5),center+Vector3.new(side*1.5,-0.8,0.2),Color3.fromRGB(235,194,162),model)
+  round("Глаз сотрудника",Vector3.new(0.12,0.15,0.12),center+Vector3.new(side*0.25,2.2,0.7),Color3.fromRGB(31,40,48),model)
+ end
+ part("Кепка сотрудника",Vector3.new(1.65,0.45,1.65),center+Vector3.new(0,3,0),Color3.fromRGB(44,73,110),nil,model)
+ if job[1]=="Маршал перрона" or job[1]=="Авиамеханик" then
+  part("Сигнальный жилет",Vector3.new(2.25,1.9,1.35),center+Vector3.new(0,0.15,0),Color3.fromRGB(248,166,49),Enum.Material.Fabric,model)
+  part("Светоотражатель",Vector3.new(2.3,0.2,1.4),center+Vector3.new(0,0.1,0),snow,nil,model)
+ end
+ if job[1]=="Маршал перрона" then
+  for _,side in ipairs({-1,1}) do rod("Сигнальный жезл",center+Vector3.new(side*1.5,-0.5,0.5),center+Vector3.new(side*1.8,0.6,0.8),0.09,side<0 and red or green,model,Enum.Material.Neon) end
+ end
+ for _,piece in model:GetDescendants() do if piece:IsA("BasePart") and piece~=body then
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=body,piece,piece
+  piece.Anchored,piece.CanCollide,piece.Massless=false,false,true
+ end end
+ sign(body,job[1].." • E — спросить",Vector3.new(0,4,0))
+ prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage",job[1]..": "..job[3]) end)
+ table.insert(airportStaff,model)
+end
+local aircraft={}
+local flightPilots={}
+local parachutes={}
+local airInput=Instance.new("RemoteEvent") airInput.Name,airInput.Parent="AircraftControl",ReplicatedStorage
+local airAction=Instance.new("RemoteEvent") airAction.Name,airAction.Parent="AircraftAction",ReplicatedStorage
+local function clearParachute(player)
+ local chute=parachutes[player]
+ if not chute then return end
+ parachutes[player]=nil chute.force:Destroy() chute.model:Destroy()
+ player:SetAttribute("ParachuteOpen",false)
+ if chute.humanoid.Parent then chute.humanoid.PlatformStand=false chute.humanoid.WalkSpeed=16 chute.humanoid.AutoRotate=true end
+end
+local function ejectAircraft(player)
+ if parachutes[player] then return end
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ if not root or not humanoid or humanoid.Health<=0 then return end
+ local plane,seat
+ for _,candidate in aircraft do for _,place in candidate.seats do
+  if place.Occupant==humanoid then plane,seat=candidate,place break end
+ end if plane then break end end
+ if not plane and not player:GetAttribute("HasParachute") then return end
+ if seat then
+  local weld=seat:FindFirstChild("SeatWeld") if weld then weld:Destroy() end
+  humanoid.Sit=false
+  if plane.pilot==player then plane.pilot=nil flightPilots[player]=nil end
+  local exit=plane.root.CFrame*CFrame.new(plane.span/2+7,2,0)
+  character:PivotTo(CFrame.new(math.clamp(exit.Position.X,-870,870),exit.Position.Y,math.clamp(exit.Position.Z,-670,670)))
+ end
+ player:SetAttribute("AircraftPilot",nil) player:SetAttribute("AircraftPassenger",nil)
+ local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude
+ local excluded={character} if plane then table.insert(excluded,plane.model) end
+ params.FilterDescendantsInstances=excluded
+ local ground=workspace:Raycast(root.Position,Vector3.new(0,-1000,0),params)
+ local height=ground and (root.Position-ground.Position).Magnitude or root.Position.Y
+ if height<15 then return end
+ player:SetAttribute("HasParachute",false)
+ local canopy=Instance.new("Model") canopy.Name,canopy.Parent="Парашют",character
+ local dome=round("Купол парашюта",Vector3.new(15,3,9),root.Position+Vector3.new(0,8,0),red,canopy)
+ for _,side in ipairs({-1,1}) do
+  rod("Стропа парашюта",root.Position+Vector3.new(side*1.5,1,0),root.Position+Vector3.new(side*6,7,0),0.04,snow,canopy)
+ end
+ for _,piece in canopy:GetDescendants() do if piece:IsA("BasePart") then
+  piece.Anchored,piece.Massless,piece.CanCollide,piece.CanQuery=false,true,false,false
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=root,piece,piece
+ end end
+ local force=Instance.new("BodyVelocity")
+ force.Name,force.MaxForce,force.P,force.Velocity="Плавное снижение",Vector3.new(100000,100000,100000),6000,Vector3.new(0,-13,0)
+ force.Parent=root
+ parachutes[player]={model=canopy,force=force,root=root,humanoid=humanoid,input=Vector3.zero,started=os.clock()}
+ player:SetAttribute("ParachuteOpen",true)
+ player:SetAttribute("WinterMessage","Парашют открыт • WASD — направлять • посадка автоматическая")
+end
+airAction.OnServerEvent:Connect(function(player,action) if action=="jump" then ejectAircraft(player) end end)
+airInput.OnServerEvent:Connect(function(player,input)
+ if typeof(input)~="Vector3" or input.X~=input.X or input.Y~=input.Y or input.Z~=input.Z or math.abs(input.X)>1 or math.abs(input.Y)>1 or math.abs(input.Z)>1 then return end
+ if parachutes[player] then parachutes[player].input=Vector3.new(input.X,0,input.Y) parachutes[player].untilInput=os.clock()+0.5 return end
+ local plane=flightPilots[player]
+ if not plane or not plane.seats[1].Occupant or plane.seats[1].Occupant.Parent~=player.Character then return end
+ plane.turn,plane.throttle,plane.climb,plane.untilInput=input.X,input.Y,input.Z,os.clock()+0.5
+end)
+for index,name in {"Маленький самолёт","Большой самолёт"} do
+ local large=index==2
+ local home=Vector3.new(large and -738 or -755,large and 6.8 or 4.2,large and 280 or 180)
+ local planeModel=Instance.new("Model") planeModel.Name,planeModel.Parent=name,world
+ local root=round("Фюзеляж",Vector3.new(large and 7 or 3.6,large and 7 or 3.6,large and 32 or 15),home,snow,planeModel)
+ planeModel.PrimaryPart=root
+ local span=large and 52 or 32
+ local body=part("Центральный корпус",Vector3.new(large and 28 or 14,large and 7 or 3.6,large and 7 or 3.6),home,snow,Enum.Material.SmoothPlastic,planeModel)
+ body.Shape,body.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+ round("Обтекаемый нос",Vector3.new(large and 6.9 or 3.5,large and 6.9 or 3.5,large and 12 or 7),home+Vector3.new(0,0,large and -17 or -8),snow,planeModel)
+ for section=0,9 do
+  local diameter=(large and 7 or 3.6)*(1-section/11)
+  local tail=part("Сужение хвоста",Vector3.new(large and 1.3 or 0.8,diameter,diameter),home+Vector3.new(0,0,(large and 12 or 6)+section*(large and 1.2 or 0.7)),snow,nil,planeModel)
+  tail.Shape,tail.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+ end
+ local function sweptWing(name,halfSpan,chord,z,y,color)
+  part(name.." • центроплан",Vector3.new(large and 8 or 4,0.65,chord),home+Vector3.new(0,y,z),color,Enum.Material.Metal,planeModel)
+  for _,side in ipairs({-1,1}) do
+   local wing=Instance.new("WedgePart")
+   wing.Name,wing.Size,wing.Anchored=name,Vector3.new(0.65,halfSpan,chord),true
+   wing.Color,wing.Material,wing.Parent=color,Enum.Material.Metal,planeModel
+   wing.CFrame=CFrame.new(home+Vector3.new(side*(halfSpan/2+(large and 3 or 1.5)),y,z))*CFrame.Angles(0,0,side>0 and -math.pi/2 or math.pi/2)
+  end
+ end
+ sweptWing("Стреловидное крыло",span/2-3,large and 11 or 7,3,-0.3,large and Color3.fromRGB(219,230,241) or snow)
+ sweptWing("Хвостовой стабилизатор",large and 13 or 7,large and 5 or 3,large and 19 or 10,1,large and Color3.fromRGB(45,101,166) or red)
+ local fin=Instance.new("WedgePart")
+ fin.Name,fin.Size,fin.Anchored="Хвостовой киль",Vector3.new(0.6,large and 9 or 5,large and 8 or 4.5),true
+ fin.Position,fin.Color,fin.Parent=home+Vector3.new(0,large and 5 or 3,large and 19 or 10),large and Color3.fromRGB(45,101,166) or red,planeModel
+ for _,side in ipairs({-1,1}) do
+  local navigation=round("Бортовой огонь",Vector3.new(0.6,0.6,0.6),home+Vector3.new(side*(span/2-1),0,5),side<0 and red or green,planeModel)
+  navigation.Material=Enum.Material.Neon
+  if large then
+   for z=-8,10,2.4 do
+    round("Иллюминатор",Vector3.new(0.12,0.95,0.72),home+Vector3.new(side*3.52,0.8,z),Color3.fromRGB(42,80,111),planeModel)
+   end
+   part("Полоса ливреи",Vector3.new(0.09,0.35,23),home+Vector3.new(side*3.53,-0.6,0),Color3.fromRGB(45,101,166),nil,planeModel)
+  else
+   part("Красная ливрея",Vector3.new(0.06,0.28,10),home+Vector3.new(side*1.81,-0.4,0),red,nil,planeModel)
+   rod("Подкос крыла",home+Vector3.new(side*1.5,-1,1),home+Vector3.new(side*10,-0.4,3),0.1,Color3.fromRGB(135,150,169),planeModel,Enum.Material.Metal)
+  end
+ end
+ if large then
+  local front=part("Лобовое стекло пилотов",Vector3.new(5.2,1.6,0.15),home+Vector3.new(0,2.5,-21.3),Color3.fromRGB(43,83,112),Enum.Material.Glass,planeModel)
+  front.Orientation,front.Transparency=Vector3.new(-15,0,0),0.15
+  for _,side in ipairs({-1,1}) do
+   local glass=part("Боковое стекло кабины",Vector3.new(0.14,1.6,3.5),home+Vector3.new(side*3.3,1.9,-16.5),Color3.fromRGB(43,83,112),Enum.Material.Glass,planeModel)
+   glass.Transparency=0.15
+  end
+ else
+  local glass=round("Фонарь кабины",Vector3.new(3.3,3.4,5.5),home+Vector3.new(0,1.9,-5.5),Color3.fromRGB(107,175,205),planeModel)
+  glass.Material,glass.Transparency=Enum.Material.Glass,0.25
+ end
+ for _,side in ipairs({-1,1}) do
+  local wheel=part("Шасси самолёта",Vector3.new(0.8,large and 2.8 or 1.5,large and 2.8 or 1.5),home+Vector3.new(side*(large and 3 or 1.7),large and -5 or -3,5),Color3.fromRGB(35,41,49),nil,planeModel)
+  wheel.Shape=Enum.PartType.Cylinder
+ end
+ local noseWheel=part("Переднее шасси",Vector3.new(0.6,large and 2.4 or 1.5,large and 2.4 or 1.5),home+Vector3.new(0,large and -5.2 or -3,large and -12 or -6),Color3.fromRGB(35,41,49),nil,planeModel)
+ noseWheel.Shape=Enum.PartType.Cylinder
+ rod("Передняя стойка шасси",home+Vector3.new(0,-1,large and -12 or -6),home+Vector3.new(0,large and -5.2 or -3,large and -12 or -6),0.15,Color3.fromRGB(153,166,182),planeModel,Enum.Material.Metal)
+ for _,side in ipairs({-1,1}) do
+  rod("Стойка основного шасси",home+Vector3.new(side*(large and 2.5 or 1.5),-1,4),home+Vector3.new(side*(large and 3 or 1.7),large and -5 or -3,5),0.15,Color3.fromRGB(153,166,182),planeModel,Enum.Material.Metal)
+ end
+ local seats={}
+ for n=1,(large and 6 or 2) do
+  local seat=Instance.new("Seat")
+  seat.Name,seat.Size,seat.Anchored,seat.CanTouch,seat.CanCollide=n==1 and "Кресло пилота" or "Кресло пассажира самолёта",Vector3.new(2,0.4,2),true,false,false
+  local x=n==1 and 0 or ((n%2==0 and -1 or 1)*(large and 1.7 or 0))
+  local z=n==1 and (large and -14 or -6) or (large and (-5+math.floor((n-2)/2)*6) or 3)
+  seat.Position,seat.Color,seat.Parent=home+Vector3.new(x,0.3,z),green,planeModel
+  table.insert(seats,seat)
+ end
+ local plane={model=planeModel,root=root,seats=seats,passengers={},home=home,span=span,speed=0,yaw=0,turn=0,throttle=0,climb=0,untilInput=0,maxSpeed=large and 180 or 135,baseHeight=home.Y}
+ plane.propellers={}
+ if large then
+  for _,side in ipairs({-1,1}) do
+   local engine=part("Двигатель большого самолёта",Vector3.new(8,3,3),home+Vector3.new(side*18,-2,0),Color3.fromRGB(120,140,161),Enum.Material.Metal,planeModel)
+   engine.Shape,engine.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+   for _,depth in ipairs({-4.2,4.2}) do
+    local ring=part("Обод двигателя",Vector3.new(0.3,3.1,3.1),home+Vector3.new(side*18,-2,depth),Color3.fromRGB(175,188,203),Enum.Material.Metal,planeModel)
+    ring.Shape,ring.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+    local intake=part("Воздухозаборник двигателя",Vector3.new(0.32,2.35,2.35),home+Vector3.new(side*18,-2,depth+(depth<0 and -0.2 or 0.2)),Color3.fromRGB(32,39,48),nil,planeModel)
+    intake.Shape,intake.Orientation=Enum.PartType.Cylinder,Vector3.new(0,90,0)
+   end
+  end
+ else
+  for i=1,2 do
+   local blade=part("Винт самолёта",Vector3.new(0.3,5,0.3),home+Vector3.new(0,0,-11.5),Color3.fromRGB(73,88,107),Enum.Material.Metal,planeModel)
+   blade.CanCollide=false
+   table.insert(plane.propellers,blade)
+  end
+ end
+ table.insert(aircraft,plane)
+ local function boardPlane(player,passenger)
+  if plane.speed>8 then player:SetAttribute("WinterMessage","Дождись остановки самолёта") return end
+  local character=player.Character local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+  if not humanoid or humanoid.Health<=0 or humanoid.Sit or parachutes[player] then return end
+  for n,seat in seats do if (passenger and n>1 or not passenger and n==1) and not seat.Occupant then
+   removeSkates(player)
+   character:PivotTo(seat.CFrame*CFrame.new(0,2,0)) seat:Sit(humanoid)
+   player:SetAttribute("HasParachute",true)
+   player:SetAttribute(passenger and "AircraftPassenger" or "AircraftPilot",name)
+   if not passenger then plane.pilot=player flightPilots[player]=plane else plane.passengers[player]=seat end
+   player:SetAttribute("WinterMessage","W/S — скорость • A/D — поворот • ↑/↓ — набор/снижение • R — парашют")
+   return
+  end end
+ end
+ for n,place in seats do if n>1 then
+  place:GetPropertyChangedSignal("Occupant"):Connect(function()
+   if place.Occupant then return end
+   for passenger,assigned in plane.passengers do
+    if assigned==place then passenger:SetAttribute("AircraftPassenger",nil) plane.passengers[passenger]=nil end
+   end
+  end)
+ end end
+ prompt(seats[1],"Сесть пилотом",function(player) boardPlane(player,false) end)
+ prompt(seats[2],"Сесть пассажиром",function(player) boardPlane(player,true) end,"F")
+ sign(root,name.." • "..#seats.." мест\nW + ↑ — взлететь • R — парашют",Vector3.new(0,8,0))
+ local recall=part("Возврат: "..name,Vector3.new(2,3,2),home+Vector3.new(-8,0,-15),green)
+ prompt(recall,"Вернуть пустой самолёт",function(player)
+  if sledOccupied(planeModel) then player:SetAttribute("WinterMessage","В самолёте есть люди") return end
+  plane.pilot=nil plane.speed=0 plane.yaw=0 planeModel:PivotTo(CFrame.new(home))
+ end)
+end
+RunService.Heartbeat:Connect(function(dt)
+ dt=math.min(dt,0.1)
+ for _,plane in aircraft do
+  local turn,throttle,climb=0,0,0
+  local pilot=plane.pilot
+  local humanoid=pilot and pilot.Character and pilot.Character:FindFirstChildOfClass("Humanoid")
+  if pilot and (not humanoid or humanoid.Health<=0 or plane.seats[1].Occupant~=humanoid or not humanoid.Sit) then
+   flightPilots[pilot]=nil pilot:SetAttribute("AircraftPilot",nil) plane.pilot=nil pilot=nil
+  end
+  if pilot and os.clock()<plane.untilInput then turn,throttle,climb=plane.turn,plane.throttle,plane.climb end
+  plane.speed=math.clamp(plane.speed+(throttle>0 and 35 or (throttle<0 and -55 or (pilot and -0.5 or -10)))*dt,0,plane.maxSpeed)
+  plane.yaw-=turn*0.8*dt*math.min(plane.speed/40,1)
+  local forward=Vector3.new(-math.sin(plane.yaw),0,-math.cos(plane.yaw))
+  local position=plane.root.Position+forward*plane.speed*dt
+  local vertical=plane.speed>40 and climb*48 or (plane.root.Position.Y>plane.baseHeight+2 and -9 or 0)
+  if not pilot then vertical=-8 end
+  position=Vector3.new(math.clamp(position.X,-850,850),math.clamp(position.Y+vertical*dt,plane.baseHeight,450),math.clamp(position.Z,-650,650))
+  local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude
+  local excluded={plane.model}
+  for _,seat in plane.seats do if seat.Occupant then table.insert(excluded,seat.Occupant.Parent) end end
+  params.FilterDescendantsInstances=excluded
+  local ground=workspace:Raycast(position+Vector3.new(0,500,0),Vector3.new(0,-1000,0),params)
+  if ground then position=Vector3.new(position.X,math.max(position.Y,ground.Position.Y+plane.baseHeight),position.Z) end
+  local pitch=plane.speed>40 and climb*0.2 or 0
+  plane.model:PivotTo(CFrame.lookAt(position,position+forward+Vector3.new(0,pitch,0))*CFrame.Angles(0,0,-turn*0.2))
+  for i,blade in plane.propellers do blade.CFrame=plane.root.CFrame*CFrame.new(0,0,-11.5)*CFrame.Angles(0,0,os.clock()*math.max(plane.speed,2)*0.2+(i-1)*math.pi/2) end
+  if pilot then pilot:SetAttribute("FlightSpeed",math.floor(plane.speed)) pilot:SetAttribute("FlightHeight",math.floor(position.Y)) end
+ end
+ for player,chute in parachutes do
+  if not player.Character or chute.humanoid.Parent~=player.Character or chute.humanoid.Health<=0 or os.clock()-chute.started>180 then clearParachute(player)
+  else
+   if math.abs(chute.root.Position.X)>880 or math.abs(chute.root.Position.Z)>680 then
+    player.Character:PivotTo(CFrame.new(math.clamp(chute.root.Position.X,-870,870),chute.root.Position.Y,math.clamp(chute.root.Position.Z,-670,670)))
+   end
+   local input=(chute.untilInput or 0)>os.clock() and chute.input or Vector3.zero
+   chute.force.Velocity=input*18+Vector3.new(0,-13,0)
+   local params=RaycastParams.new() params.FilterType=Enum.RaycastFilterType.Exclude params.FilterDescendantsInstances={player.Character}
+   local ground=workspace:Raycast(chute.root.Position,Vector3.new(0,-5,0),params)
+   if ground then
+    clearParachute(player) chute.root.AssemblyLinearVelocity=Vector3.zero
+    chute.humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    player:SetAttribute("WinterMessage","Мягкая посадка! Парашют сложен")
+   end
+  end
+ end
+end)
+Players.PlayerRemoving:Connect(function(player) clearParachute(player) flightPilots[player]=nil end)
+
+return {aircraft=aircraft,parachutes=parachutes,pilots=flightPilots,eject=ejectAircraft,staff=airportStaff}
+end
+local airportState=setupAirport()
+
+-- Weather owns its schedule and damage on the server; inventory never trusts client input.
+local function setupBlizzard()
+ local x,z=155,-340
+ local wood=Color3.fromRGB(139,87,59)
+ local function build(name,size,offset,color,material)
+  return part(name,size,Vector3.new(x,0,z)+offset,color or wood,material or Enum.Material.WoodPlanks)
+ end
+ table.insert(navigationObstacles,{x=x,z=z,radius=30})
+ build("Пол дома Насти",Vector3.new(42,1,38),Vector3.new(0,1,0))
+ for _,side in {-1,1} do
+  build("Стена дома Насти",Vector3.new(1,25,38),Vector3.new(side*21,13,0))
+  build("Фасад дома Насти",Vector3.new(16,25,1),Vector3.new(side*13,13,19))
+  for _,level in {7,20} do
+   local window=build("Тёплое окно",Vector3.new(5,5,1.2),Vector3.new(side*13,level,19),gold,Enum.Material.Neon)
+   light(window,gold,14,0.4)
+  end
+ end
+ build("Задняя стена дома Насти",Vector3.new(42,25,1),Vector3.new(0,13,-19))
+ build("Над входом",Vector3.new(10,16,1),Vector3.new(0,18,19))
+ -- An open stairwell along the right wall gives genuine access to the second floor.
+ build("Второй этаж",Vector3.new(31,1,38),Vector3.new(-5.5,14,0))
+ build("Площадка лестницы",Vector3.new(11,1,9),Vector3.new(15.5,14,-14.5))
+ for i=1,20 do
+  build("Ступенька",Vector3.new(8,0.65,1.5),Vector3.new(15,1.5+i*0.65,17-i*1.5))
+ end
+ for i=0,9 do build("Перила второго этажа",Vector3.new(0.3,3,0.3),Vector3.new(10,16,-8+i*2.8),snow) end
+ build("Поручень",Vector3.new(0.4,0.4,28),Vector3.new(10,17.5,5),snow)
+ build("Заснеженная крыша",Vector3.new(46,1.5,42),Vector3.new(0,26,0),snow,Enum.Material.Snow)
+ for _,level in {1.6,14.6} do
+  build("Праздничный ковёр",Vector3.new(20,0.12,12),Vector3.new(-5,level,0),red,Enum.Material.Fabric)
+  build("Уютный диван",Vector3.new(10,2,4),Vector3.new(-12,level+1,-12),green,Enum.Material.Fabric)
+  build("Спинка дивана",Vector3.new(10,4,1),Vector3.new(-12,level+2,-14),green,Enum.Material.Fabric)
+ end
+ local hearth=build("Камин Насти",Vector3.new(7,1,3),Vector3.new(0,2,-16),Color3.fromRGB(70,55,51),Enum.Material.Brick)
+ local fire=Instance.new("Fire") fire.Size,fire.Heat,fire.Parent=4,3,hearth light(hearth,gold,24,1)
+ local tableTop=build("Обеденный стол",Vector3.new(10,0.6,6),Vector3.new(-6,4,4))
+ for _,dx in {-10,-2} do build("Ножка стола",Vector3.new(0.6,3,0.6),Vector3.new(dx,2.5,4)) end
+ local mom=Instance.new("Model") mom.Name="Мама Настя" mom.Parent=world
+ local body=part("Настя",Vector3.new(2.6,3.2,1.5),Vector3.new(x-8,4,z-5),Color3.fromRGB(111,151,140),Enum.Material.Fabric,mom)
+ round("Голова",Vector3.new(1.7,1.9,1.7),body.Position+Vector3.new(0,2.4,0),Color3.fromRGB(248,207,173),mom)
+ round("Причёска",Vector3.new(1.9,1,1.9),body.Position+Vector3.new(0,3,0),Color3.fromRGB(99,60,36),mom)
+ for _,side in {-1,1} do
+  rod("Рука Насти",body.Position+Vector3.new(side*1.5,1,0),body.Position+Vector3.new(side*1.7,-1,0),0.36,Color3.fromRGB(248,207,173),mom)
+  part("Нога Насти",Vector3.new(0.8,1.5,1),body.Position+Vector3.new(side*0.7,-2,0),wood,nil,mom)
+  round("Глаза",Vector3.new(0.16,0.16,0.12),body.Position+Vector3.new(side*0.33,2.55,-0.81),Color3.new(0,0,0),mom)
+ end
+ sign(body,"Мама Настя • макарошки и уют",Vector3.new(0,5,0))
+ -- A seated parent and a self-contained animated holiday television upstairs.
+ local function configureCatTV(tv,label)
+  local panel=Instance.new("Frame") panel.Name="Канал с котиками" panel.Size=UDim2.fromScale(1,1)
+  panel.BackgroundColor3=Color3.fromRGB(52,69,103) panel.Parent=label.Parent
+  local title=Instance.new("TextLabel") title.Size=UDim2.fromScale(1,0.22) title.BackgroundTransparency=1
+  title.Text="КОТИКИ ТВ • Мурр!" title.TextColor3=gold title.TextScaled=true title.Parent=panel
+  local cat=Instance.new("TextLabel") cat.Name="Котик на экране" cat.Size=UDim2.fromScale(0.65,0.65)
+  cat.BackgroundTransparency=1 cat.TextScaled=true cat.Parent=panel
+  local subtitle=Instance.new("TextLabel") subtitle.Size=UDim2.fromScale(1,0.17) subtitle.Position=UDim2.fromScale(0,0.83)
+  subtitle.BackgroundTransparency=1 subtitle.Text="Лапки, хвостики и уют ♥" subtitle.TextColor3=snow subtitle.TextScaled=true subtitle.Parent=panel
+  tv:SetAttribute("CatChannelEnabled",true)
+  prompt(tv,"Котики / новости",function(player)
+   local enabled=not tv:GetAttribute("CatChannelEnabled")
+   tv:SetAttribute("CatChannelEnabled",enabled) panel.Visible=enabled
+   player:SetAttribute("WinterMessage",enabled and "Включён канал с котиками!" or "Включены праздничные передачи и новости погоды")
+  end)
+  task.spawn(function()
+   local poses={"🐱","😺","😸","😻"} local frame=1
+   while tv.Parent do
+    cat.Text=poses[frame] cat.Position=UDim2.fromScale(0.17+math.sin(frame)*0.08,0.21)
+    frame=frame%#poses+1 task.wait(0.7)
+   end
+  end)
+ end
+ local function setupDad()
+  local dad=Instance.new("Model") dad.Name="Папа Егор смотрит телевизор" dad.Parent=world
+  local origin=Vector3.new(x-12,18.2,z-12)
+  local torso=part("Папа",Vector3.new(2.8,3,1.5),origin,Color3.fromRGB(71,104,158),Enum.Material.Fabric,dad)
+  round("Голова папы",Vector3.new(1.8,2,1.8),origin+Vector3.new(0,2.4,0),Color3.fromRGB(243,199,163),dad)
+  round("Волосы папы",Vector3.new(1.9,0.7,1.8),origin+Vector3.new(0,3.1,0),Color3.fromRGB(72,49,40),dad)
+  for _,side in {-1,1} do
+   round("Глаза папы",Vector3.new(0.16,0.16,0.12),origin+Vector3.new(side*0.33,2.5,0.85),Color3.new(0,0,0),dad)
+   rod("Рука папы",origin+Vector3.new(side*1.6,0.8,0),origin+Vector3.new(side*1.6,-1,1.1),0.4,Color3.fromRGB(243,199,163),dad)
+   rod("Брюки папы",origin+Vector3.new(side*0.7,-1.5,0),origin+Vector3.new(side*0.7,-1.5,2.6),0.48,Color3.fromRGB(54,61,76),dad,Enum.Material.Fabric)
+   rod("Голень папы",origin+Vector3.new(side*0.7,-1.5,2.6),origin+Vector3.new(side*0.7,-3,2.6),0.4,Color3.fromRGB(54,61,76),dad)
+   part("Тапочки папы",Vector3.new(1,0.5,1.6),origin+Vector3.new(side*0.7,-3.2,2.9),green,Enum.Material.Fabric,dad)
+  end
+  part("Золотая отделка свитера",Vector3.new(2.9,0.3,1.6),origin+Vector3.new(0,0.8,0),gold,Enum.Material.Metal,dad)
+  round("Золотая пуговица",Vector3.new(0.22,0.22,0.15),origin+Vector3.new(0,0,0.8),gold,dad)
+  local remote=part("Пульт телевизора",Vector3.new(0.4,0.15,0.9),origin+Vector3.new(1.6,-0.8,1.2),Color3.fromRGB(30,33,40),nil,dad)
+  for _,item in dad:GetDescendants() do
+   if item:IsA("BasePart") and item~=torso then
+    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=torso,item,torso
+   end
+  end
+  local cabinet=build("Тумба телевизора",Vector3.new(11,2,3),Vector3.new(-12,15.8,3))
+  local tv=build("Телевизор",Vector3.new(11,6.4,0.5),Vector3.new(-12,20,3),Color3.fromRGB(26,31,40),Enum.Material.SmoothPlastic)
+  local screen=Instance.new("SurfaceGui") screen.Face=Enum.NormalId.Back screen.CanvasSize=Vector2.new(660,360) screen.Parent=tv
+  -- Dad sits behind the screen's front face (negative Z).
+  screen.Face=Enum.NormalId.Front
+  local picture=Instance.new("TextLabel") picture.Size=UDim2.fromScale(1,1)
+  picture.BackgroundColor3=Color3.fromRGB(19,45,73) picture.TextColor3=snow picture.TextSize=38
+  picture.Text="❄ НОВОГОДНИЙ КАНАЛ ❄" picture.Parent=screen
+  configureCatTV(tv,picture)
+  local frames={"❄ НОВОГОДНИЙ КАНАЛ ❄","☃ Зимняя сказка ☃","Ёлочка, огоньки и подарки!","С праздником! ♥"}
+  light(tv,Color3.fromRGB(137,193,255),15,0.35)
+  sign(torso,"Папа Егор • смотрим телевизор вместе",Vector3.new(0,5,0))
+  prompt(torso,"Поговорить с папой",function(player)
+   player:SetAttribute("WinterMessage","Папа Егор: Присаживайся рядом! Смотрим новогоднюю передачу, пока снаружи метель.")
+  end)
+  local seat=Instance.new("Seat") seat.Name="Посмотреть телевизор с папой" seat.Size=Vector3.new(3,0.4,3)
+  seat.Position=origin+Vector3.new(3, -1.6,0) seat.Orientation=Vector3.new(0,180,0)
+  seat.Anchored=true seat.Transparency=1 seat.Parent=world
+  prompt(seat,"Сесть смотреть телевизор",function(player)
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if humanoid and not seat.Occupant then seat:Sit(humanoid) end
+  end)
+  task.spawn(function()
+   local frame=1
+   while tv.Parent do
+    picture.Text=frame%2==0 and ("НОВОСТИ ПОГОДЫ\n"..(workspace:GetAttribute("StormForecast") or "Прогноз уточняется")) or frames[frame]
+    picture.TextWrapped=true
+    frame=frame%#frames+1
+    task.wait(4)
+   end
+  end)
+ end
+ setupDad()
+ local state={active=false,elapsed=0,cycle=0,planted=0,trees=forestTrees}
+ local function sheltered(pos)
+  if math.abs(pos.X-235)<28 and math.abs(pos.Z+345)<24 and pos.Y>0 and pos.Y<31 then return true end
+  if math.abs(pos.X-x)<20.5 and math.abs(pos.Z-z)<18.5 and pos.Y>0 and pos.Y<26 then return true end
+  for _,center in houseCenters do
+   if math.abs(pos.X-center[1])<13.5 and math.abs(pos.Z-center[2])<12.5 and pos.Y>0 and pos.Y<14 then return true end
+  end
+  return false
+ end
+ state.sheltered=sheltered
+ local function setupDoors()
+
+  local doors={}
+  local entrances={}
+  for _,center in houseCenters do table.insert(entrances,{center[1],center[2]+13,8,8,2.2}) end
+  table.insert(entrances,{x,z+19,10,9,1.5})
+  table.insert(entrances,{235,-320,14,14,1.6})
+  for index,entry in entrances do
+   local closed=Vector3.new(entry[1],entry[5]+entry[4]/2,entry[2])
+   local door=part("Дверь дома "..index,Vector3.new(entry[3]-0.3,entry[4],0.5),closed,wood,Enum.Material.WoodPlanks)
+   local handle=round("Золотая ручка двери",Vector3.new(0.3,0.3,0.4),closed+Vector3.new(-entry[3]/2+0.8,-0.5,0.4),gold,door)
+   door.CanCollide=true
+   door:SetAttribute("Open",false)
+   local function toggle(player)
+    local opened=not door:GetAttribute("Open")
+    if not opened then
+     for _,other in Players:GetPlayers() do
+      local root=other.Character and other.Character:FindFirstChild("HumanoidRootPart")
+      if root and math.abs(root.Position.X-closed.X)<entry[3]/2+1 and math.abs(root.Position.Z-closed.Z)<2 then
+       player:SetAttribute("WinterMessage","Отойди от дверного проёма, чтобы закрыть дверь") return
+      end
+     end
+    end
+    door:SetAttribute("Open",opened) door.CanCollide=not opened
+    door.Position=closed+Vector3.new(opened and entry[3] or 0,0,0)
+    handle.Position=door.Position+Vector3.new(-entry[3]/2+0.8,-0.5,0.4)
+   end
+   -- A stationary jamb keeps the control reachable with the panel slid aside.
+   local control=part("Ручка у входа "..index,Vector3.new(0.35,0.5,0.5),closed+Vector3.new(entry[3]/2+0.5,-0.5,0.8),gold)
+   prompt(control,"Открыть / закрыть дверь",toggle)
+   table.insert(doors,{panel=door,control=control,entrance=closed,width=entry[3],height=entry[4],floor=entry[5]})
+  end
+  state.doors=doors
+ end
+ setupDoors()
+
+ local function setupSnowDrifts()
+  local piles={}
+  local cooldown={}
+  local function updatePile(pile)
+   local height=math.max(0.1,pile.amount)
+   pile.snow.Size=Vector3.new(pile.width,height,pile.depth)
+   pile.snow.Position=pile.base+Vector3.new(0,height/2,0)
+   pile.snow.Transparency=pile.amount>0 and 0 or 1
+   pile.snow.CanCollide=pile.amount>=0.5
+   pile.snow:SetAttribute("SnowDepth",pile.amount)
+  end
+  for index,door in state.doors do
+   for layer=1,3 do
+    local offset=layer==1 and 2.5 or (layer==2 and -2.5 or -7)
+    local base=Vector3.new(door.entrance.X,door.floor,door.entrance.Z+offset)
+    local snowPart=part("Снежный завал "..index.." / "..layer,Vector3.new(door.width,0.1,4),base,snow,Enum.Material.Snow)
+    local pile={snow=snowPart,base=base,width=door.width+(layer==3 and 4 or 0),depth=4.5,amount=0,door=door,layer=layer}
+    updatePile(pile) table.insert(piles,pile)
+   end
+  end
+  local function giveShovel(player)
+   if player.Backpack:FindFirstChild("Лопата") or player.Character:FindFirstChild("Лопата") then
+    player:SetAttribute("WinterMessage","Лопата уже у тебя — выбери её и нажимай рядом с завалом") return
+   end
+   local tool=Instance.new("Tool") tool.Name="Лопата" tool.RequiresHandle=true
+   local handle=part("Handle",Vector3.new(0.22,3.6,0.22),Vector3.zero,wood,Enum.Material.Wood,tool)
+   handle.Anchored,handle.CanCollide,handle.Massless=false,false,true
+   local blade=part("Совок лопаты",Vector3.new(1.9,1.6,0.25),Vector3.new(0,-2.1,0),Color3.fromRGB(126,169,191),Enum.Material.Metal,tool)
+   blade.Anchored,blade.CanCollide,blade.Massless=false,false,true
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=handle,blade,handle
+   tool.Activated:Connect(function()
+    local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if tool.Parent~=player.Character or not root or not humanoid or humanoid.Health<=0 or os.clock()-(cooldown[player] or -10)<0.6 then return end
+    cooldown[player]=os.clock()
+    local closest,distance=nil,13
+    for _,pile in piles do
+     local delta=root.Position-pile.snow.Position
+     local range=delta.Magnitude
+     if pile.amount>0 and range<distance then closest,distance=pile,range end
+    end
+    if not closest then player:SetAttribute("WinterMessage","Подойди к снегу у входа или внутри дома") return end
+    closest.amount=math.max(0,closest.amount-2.5) updatePile(closest)
+    tool.Grip=CFrame.new(0,-0.5,0)*CFrame.Angles(-0.9,0,0)
+    local burst=Instance.new("ParticleEmitter") burst.Texture="rbxasset://textures/particles/sparkles_main.dds"
+    burst.Rate=0 burst.Lifetime=NumberRange.new(0.3,0.6) burst.Speed=NumberRange.new(5,10)
+    burst.Size=NumberSequence.new(0.25) burst.Parent=closest.snow burst:Emit(18) Debris:AddItem(burst,1)
+    task.delay(0.25,function() if tool.Parent then tool.Grip=CFrame.new() end end)
+    player:SetAttribute("WinterMessage",closest.amount==0 and "Этот участок расчищен! Можно откопать остальные и помочь другу" or "Снега стало меньше! Продолжай копать — вместе быстрее")
+   end)
+   tool.Parent=player.Backpack
+   player:SetAttribute("WinterMessage","Лопата получена! Выбери и нажимай возле завала. Откапывать можно с обеих сторон")
+  end
+  for index,door in state.doors do
+   for _,side in {-1,1} do
+    local rack=part("Лопата у дома "..index.." / "..side,Vector3.new(0.4,3.6,0.4),Vector3.new(door.entrance.X+door.width/2+3,door.floor+2,door.entrance.Z+side*7),wood,Enum.Material.Wood)
+    part("Лезвие запасной лопаты",Vector3.new(1.8,1.5,0.2),rack.Position-Vector3.new(0,1.2,0),Color3.fromRGB(126,169,191),Enum.Material.Metal,rack)
+    prompt(rack,"Взять лопату",giveShovel)
+   end
+  end
+  local rack=part("Лопата на спавне",Vector3.new(0.4,4,0.4),Vector3.new(14,2,50),gold)
+  prompt(rack,"Взять лопату",giveShovel)
+  function state.accumulate(seconds)
+   if not state.active or state.elapsed<10 then return end
+   for _,pile in piles do
+    if pile.door.panel:GetAttribute("Open") then
+     local rate=pile.layer==1 and 0.2 or (pile.layer==2 and 0.15 or 0.09)
+     pile.amount=math.min(pile.door.height, pile.amount+seconds*rate)
+     updatePile(pile)
+    end
+   end
+  end
+  state.piles=piles state.giveShovel=giveShovel
+  Players.PlayerRemoving:Connect(function(player) cooldown[player]=nil end)
+ end
+ setupSnowDrifts()
+
+ prompt(body,"Попросить макарошки",function(player)
+  player:SetAttribute("WinterMessage",state.active and "Настя: Буря снаружи! Садись, кушай макарошки и оставайся до её конца." or "Настя: Заходи, я приготовила макарошки! Здесь всегда можно отдохнуть.")
+  if player.Backpack:FindFirstChild("Макарошки") or player.Character:FindFirstChild("Макарошки") then return end
+  local tool=Instance.new("Tool") tool.Name="Макарошки" tool.RequiresHandle=true
+  local bowl=part("Handle",Vector3.new(1.4,0.35,1.4),Vector3.zero,snow,Enum.Material.SmoothPlastic,tool)
+  bowl.Anchored,bowl.CanCollide,bowl.Massless=false,false,true
+  for i=1,9 do
+   local noodle=part("Макароны",Vector3.new(0.45,0.16,0.17),Vector3.new((i%3-1)*0.35,0.25,math.floor((i-1)/3)*0.3-0.3),gold,nil,tool)
+   noodle.Anchored,noodle.CanCollide,noodle.Massless=false,false,true
+   local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=bowl,noodle,bowl
+  end
+  local last=-10
+  tool.Activated:Connect(function()
+   if tool.Parent~=player.Character or os.clock()-last<3 then return end
+   last=os.clock()
+   local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
+   if humanoid and humanoid.Health>0 then humanoid.Health=math.min(humanoid.MaxHealth,humanoid.Health+15) end
+   tool.Grip=CFrame.new(0,-0.5,-0.6)*CFrame.Angles(-1,0,0)
+   player:SetAttribute("WinterMessage","Вкусные макарошки! +15 здоровья")
+   task.delay(0.8,function() if tool.Parent then tool.Grip=CFrame.new() end end)
+  end)
+  tool.Parent=player.Backpack
+ end)
+ local function giveSeed(player)
+  player:SetAttribute("FirSaplings",(player:GetAttribute("FirSaplings") or 0)+1)
+  if player.Backpack:FindFirstChild("Посадить ёлочку") or player.Character:FindFirstChild("Посадить ёлочку") then return end
+  local tool=Instance.new("Tool") tool.Name="Посадить ёлочку" tool.RequiresHandle=false
+  tool.Activated:Connect(function()
+   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+   if tool.Parent~=player.Character or not root or (player:GetAttribute("FirSaplings") or 0)<1 then return end
+   local pos=root.Position+root.CFrame.LookVector*6
+   if sheltered(pos) or math.abs(pos.X)>500 or math.abs(pos.Z)>600 or pos.Y>10 or state.planted>=40 then
+    player:SetAttribute("WinterMessage","Посади ёлочку на свободной снежной поляне в парке") return
+   end
+   for _,obstacle in navigationObstacles do
+    if (Vector3.new(pos.X,0,pos.Z)-Vector3.new(obstacle.x,0,obstacle.z)).Magnitude<obstacle.radius+5 then
+     player:SetAttribute("WinterMessage","Здесь тесно: отойди от деревьев и построек") return
+    end
+   end
+   player:SetAttribute("FirSaplings",player:GetAttribute("FirSaplings")-1)
+   state.planted+=1
+   tree(pos.X,pos.Z,12)
+   player:SetAttribute("WinterMessage","Ёлочка посажена! Спасибо за восстановление леса ♥")
+  end)
+  tool.Parent=player.Backpack
+ end
+ local function breakTrees()
+  local broken=0
+  for _,entry in forestTrees do
+   if not entry.broken and entry.height>=16 and (math.abs(entry.x)>160 or math.abs(entry.z)>160) then
+    entry.broken=true entry.model:Destroy()
+    local stump=part("Пень после бури",Vector3.new(1.4,1.5,1.4),Vector3.new(entry.x,0.75,entry.z),wood,Enum.Material.Wood)
+    local log=rod("Сломанный ствол",Vector3.new(entry.x+2,0.9,entry.z),Vector3.new(entry.x+10,0.9,entry.z+3),0.65,wood)
+    local seed=part("Саженец ёлки",Vector3.new(0.4,1.5,0.4),stump.Position+Vector3.new(2,0.5,2),wood,Enum.Material.Wood)
+    round("Хвоя саженца",Vector3.new(1,1.5,1),seed.Position+Vector3.new(0,0.6,0),green,seed)
+    local taken=false
+    prompt(seed,"Подобрать саженец",function(player)
+     if taken then return end taken=true giveSeed(player) seed:Destroy()
+     player:SetAttribute("WinterMessage","Саженец найден! Выбери «Посадить ёлочку» и нажми на свободной поляне")
+    end)
+    Debris:AddItem(stump,300) Debris:AddItem(log,300) Debris:AddItem(seed,300)
+    broken+=1 if broken>=3 then break end
+   end
+  end
+ end
+ local function announce(message)
+  for _,player in Players:GetPlayers() do player:SetAttribute("WinterMessage",message) end
+ end
+ local function setupSnowWave()
+  local wave=Instance.new("Model") wave.Name="Огромная движущаяся волна снега" wave.Parent=world
+  local root=part("Фронт снежной волны",Vector3.new(1800,68,20),Vector3.new(0,-200,0),snow,Enum.Material.Snow,wave)
+  root.CanCollide,root.CanQuery=false,false wave.PrimaryPart=root
+  for i=0,29 do
+   local crest=round("Пенный снежный гребень",Vector3.new(85,48+(i%3)*9,50),Vector3.new(-870+i*60,-170,-10),snow,wave)
+   crest.Material=Enum.Material.Snow
+  end
+  local lastHit={}
+  state.wave=wave
+  RunService.Heartbeat:Connect(function(dt)
+   if not state.active or state.elapsed<10 then
+    if root.Position.Y>0 then wave:PivotTo(CFrame.new(0,-200,0)) end
+    return
+   end
+   local elapsed=state.elapsed+math.clamp(os.clock()-(state.lastStepAt or os.clock()),0,1)
+   local front=-700+math.clamp((elapsed-10)/80,0,1)*1400
+   wave:PivotTo(CFrame.new(0,34,front))
+   for _,player in Players:GetPlayers() do
+    local body=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if body and humanoid and humanoid.Health>0 and math.abs(body.Position.Z-front)<24 and body.Position.Y<92
+     and not sheltered(body.Position) and lastHit[player]~=state.cycle then
+     lastHit[player]=state.cycle humanoid:TakeDamage(12)
+     body.AssemblyLinearVelocity+=Vector3.new(0,14,22)
+     player:SetAttribute("WinterMessage","Тебя накрыла снежная волна! Укройся в доме")
+    end
+   end
+  end)
+  Players.PlayerRemoving:Connect(function(player) lastHit[player]=nil end)
+ end
+ setupSnowWave()
+ function state.step(seconds)
+  state.lastStepAt=os.clock()
+  state.elapsed+=seconds
+  if not state.active and state.elapsed>=150 then
+   state.active=true state.elapsed=0 state.cycle+=1
+   workspace:SetAttribute("BlizzardActive",true)
+   announce("Надвигается снежная буря! Через 10 секунд станет опасно. Настя ждёт в двухэтажном доме у леса!")
+   breakTrees()
+  elseif state.active and state.elapsed>=90 then
+   state.active=false state.elapsed=0 workspace:SetAttribute("BlizzardActive",false)
+   announce("Буря закончилась! Можно гулять и восстанавливать лес: ищите саженцы возле сломанных деревьев.")
+  end
+  state.accumulate(seconds)
+  local remaining=math.max(0,math.ceil((state.active and 90 or 150)-state.elapsed))
+  workspace:SetAttribute("StormForecast",(state.active and "Буря идёт! До конца: " or "До снежной бури: ")..math.floor(remaining/60).." мин "..(remaining%60).." сек")
+  for _,player in Players:GetPlayers() do
+   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   local safe=root and sheltered(root.Position) or false
+   player:SetAttribute("StormSheltered",safe)
+   if state.active and state.elapsed>=10 and root and humanoid and humanoid.Health>0 and not safe then humanoid:TakeDamage(4*seconds) end
+  end
+ end
+ workspace:SetAttribute("BlizzardActive",false)
+ workspace:SetAttribute("StormForecast","До бури: 2 мин 30 сек")
+ local function setupLemonGift()
+ local function setupLemonHouse()
+  local center=Vector3.new(235,0,-345)
+  local yellow=Color3.fromRGB(249,214,53)
+  local function piece(name,size,offset,color,material)
+   return part(name,size,center+offset,color or yellow,material or Enum.Material.SmoothPlastic)
+  end
+  table.insert(navigationObstacles,{x=235,z=-345,radius=38})
+  piece("Пол лимонного дома",Vector3.new(58,1.2,50),Vector3.new(0,1,0),gold)
+  piece("Лимонная задняя стена",Vector3.new(58,28,1),Vector3.new(0,15,-25))
+  for _,side in {-1,1} do
+   piece("Лимонная стена",Vector3.new(1,28,50),Vector3.new(side*29,15,0))
+   piece("Лимонный фасад",Vector3.new(22,28,1),Vector3.new(side*18,15,25))
+   local window=piece("Лимонное окно",Vector3.new(10,10,1.1),Vector3.new(side*18,15,25),snow,Enum.Material.Glass)
+   window.Transparency=0.35
+  end
+  piece("Над дверью лимонного дома",Vector3.new(14,14,1),Vector3.new(0,22,25))
+  piece("Сплошная крыша дома Леона",Vector3.new(62,1.5,54),Vector3.new(0,29.7,0),yellow)
+  local roof=round("Крыша — огромный лимон",Vector3.new(66,18,58),center+Vector3.new(0,38.5,0),yellow,world)
+  roof.CanCollide=true
+  rod("Листик лимонного дома",center+Vector3.new(0,47,0),center+Vector3.new(12,52,0),1.5,green)
+  piece("Ковёр лимонного дома",Vector3.new(38,0.15,30),Vector3.new(0,1.7,0),green,Enum.Material.Fabric)
+  piece("Лимонный диван",Vector3.new(20,2,5),Vector3.new(0,3,10),gold,Enum.Material.Fabric)
+  piece("Спинка лимонного дивана",Vector3.new(20,5,1),Vector3.new(0,5,13),yellow,Enum.Material.Fabric)
+  local tv=piece("Телевизор лимонного дома",Vector3.new(22,12,1),Vector3.new(0,12,-22),Color3.fromRGB(22,31,43))
+  local surface=Instance.new("SurfaceGui") surface.Face=Enum.NormalId.Back surface.CanvasSize=Vector2.new(880,480) surface.Parent=tv
+  local label=Instance.new("TextLabel") label.Size=UDim2.fromScale(1,1) label.TextWrapped=true label.TextSize=44
+  label.BackgroundColor3=Color3.fromRGB(35,65,48) label.TextColor3=yellow label.Parent=surface
+  label.Text="ЛИМОННЫЙ КАНАЛ • Добро пожаловать, Леона!"
+  configureCatTV(tv,label)
+  for _,offset in {-4,4} do
+   local seat=Instance.new("Seat") seat.Name="Смотреть лимонный телевизор" seat.Size=Vector3.new(3,0.4,3)
+   seat.Position=center+Vector3.new(offset,4.2,10) seat.Anchored=true seat.Transparency=1 seat.Parent=world
+   prompt(seat,"Смотреть телевизор",function(player)
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid and not seat.Occupant then seat:Sit(humanoid) end
+   end)
+  end
+  local friend=Instance.new("Model") friend.Name="Житель лимонного дома" friend.Parent=world
+  local body=part("Леон",Vector3.new(2.5,3,1.4),center+Vector3.new(-13,4.6,5),green,Enum.Material.Fabric,friend)
+  round("Голова друга",Vector3.new(1.8,2,1.8),body.Position+Vector3.new(0,2.4,0),Color3.fromRGB(245,203,172),friend)
+  round("Шапка друга",Vector3.new(2,1,2),body.Position+Vector3.new(0,3.2,0),yellow,friend)
+  for _,side in {-1,1} do
+   rod("Рука друга",body.Position+Vector3.new(side*1.4,1,0),body.Position+Vector3.new(side*1.6,-1,0),0.35,Color3.fromRGB(245,203,172),friend)
+   part("Нога друга",Vector3.new(0.8,1.7,1),body.Position+Vector3.new(side*0.6,-2,0),gold,nil,friend)
+   round("Глаз друга",Vector3.new(0.16,0.16,0.15),body.Position+Vector3.new(side*0.3,2.5,0.85),Color3.new(0,0,0),friend)
+  end
+  local function setupLeonPrank()
+   local visits={} local lastPrank=-60
+   task.spawn(function()
+    while body.Parent do
+     task.wait(1)
+     local nearby={}
+     for _,player in Players:GetPlayers() do
+      local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+      local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+      if root and humanoid and humanoid.Health>0 and math.abs(root.Position.X-235)<28 and math.abs(root.Position.Z+345)<24
+       and root.Position.Y>1 and root.Position.Y<29 and (root.Position-body.Position).Magnitude<18 then
+       nearby[player]=true visits[player]=(visits[player] or 0)+1
+       if visits[player]>=15 and os.clock()-lastPrank>=45 then
+        lastPrank=os.clock() visits[player]=0
+        local cloud=Instance.new("ParticleEmitter") cloud.Name="Мультяшное облачко Леона"
+        cloud.Texture="rbxasset://textures/particles/smoke_main.dds"
+        cloud.Color=ColorSequence.new(Color3.fromRGB(139,99,61))
+        cloud.Rate=0 cloud.Lifetime=NumberRange.new(0.8,1.5) cloud.Speed=NumberRange.new(1,3)
+        cloud.SpreadAngle=Vector2.new(70,70) cloud.Size=NumberSequence.new(2)
+        cloud.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0.4),NumberSequenceKeypoint.new(1,1)})
+        cloud.Parent=body cloud:Emit(12) Debris:AddItem(cloud,2)
+        local audio=Instance.new("Sound") audio.Name="Смешной звук Леона"
+        audio.SoundId="rbxasset://sounds/action_jump.mp3" audio.PlaybackSpeed=0.55
+        audio.Volume,audio.RollOffMaxDistance=0.35,28 audio.Parent=body audio:Play() Debris:AddItem(audio,3)
+        player:SetAttribute("WinterMessage","Леон: Ой! Это лимонный сюрприз! Хи-хи 😸")
+       end
+      end
+     end
+     for player in visits do if not nearby[player] then visits[player]=nil end end
+    end
+   end)
+   Players.PlayerRemoving:Connect(function(player) visits[player]=nil end)
+  end
+  setupLeonPrank()
+  sign(body,"Леон",Vector3.new(0,5,0))
+  prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage","Леон: Привет! Поплаваем в подарке? А потом посмотрим лимонный канал вместе!") end)
+  sign(tv,"Лимонный дом Леоны",Vector3.new(0,11,0)) light(tv,gold,35,0.7)
+  task.spawn(function()
+   local news=false
+   while tv.Parent do
+    label.Text=news and ("ЛИМОННЫЕ НОВОСТИ\n"..(workspace:GetAttribute("StormForecast") or "")) or "ЛИМОННЫЙ КАНАЛ\n☀ Праздник для Леоны! ☀"
+    news=not news task.wait(4)
+   end
+  end)
+ end
+ setupLemonHouse()
+
+  local center=Vector3.new(x-48,0,z+35)
+  local gift=Instance.new("Model") gift.Name="Подарок для Леоны" gift.Parent=world
+  table.insert(navigationObstacles,{x=center.X,z=center.Z,radius=19})
+  local box=part("Подарок для Леоны",Vector3.new(30,1,30),center+Vector3.new(0,0.5,0),red,nil,gift)
+  for _,side in {-1,1} do
+   part("Борт подарка",Vector3.new(1,8,30),center+Vector3.new(side*15,4,0),red,nil,gift)
+   part("Борт подарка",Vector3.new(30,8,1),center+Vector3.new(0,4,side*15),red,nil,gift)
+   part("Лента подарка",Vector3.new(1.1,8.1,2),center+Vector3.new(side*15,4,0),gold,Enum.Material.Metal,gift)
+  end
+  local lid=part("Открытая крышка подарка",Vector3.new(32,1,32),center+Vector3.new(0,15,-23),green,nil,gift)
+  lid.Orientation=Vector3.new(-65,0,0)
+  for i=1,12 do
+   part("Лестница в подарок",Vector3.new(6,0.7,1.5),center+Vector3.new(0,i*0.65,32-i*1.4),red,nil,gift)
+  end
+  for i=1,8 do
+   part("Выход из подарка",Vector3.new(5,0.8,1.5),center+Vector3.new(10,i*0.9,2+i*1.4),gold,nil,gift)
+  end
+  local plaque=part("Табличка подарка",Vector3.new(9,3,0.5),center+Vector3.new(-9,4,17),wood,nil,gift)
+  sign(plaque,"Подарок для Леоны",Vector3.new(0,3,0))
+  local fruits={}
+  for i=1,144 do
+   local pos=center+Vector3.new(((i-1)%12-5.5)*2.25,5.5+(i%3)*0.35,(math.floor((i-1)/12)-5.5)*2.25)
+   local fruit=round("Лимон в подарке",Vector3.new(2,1.8,2.6),pos,Color3.fromRGB(255,222,48),gift)
+   table.insert(fruits,{part=fruit,position=pos,phase=i})
+  end
+  state.poolCenter=center
+  RunService.Heartbeat:Connect(function(dt)
+   for _,fruit in fruits do fruit.part.Position=fruit.position+Vector3.new(0,math.sin(os.clock()*1.4+fruit.phase)*0.25,0) end
+   for _,player in Players:GetPlayers() do
+    local body=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if body and humanoid and humanoid.Health>0 and math.abs(body.Position.X-center.X)<14 and math.abs(body.Position.Z-center.Z)<14
+     and body.Position.Y>1 and body.Position.Y<7 and not humanoid.Sit then
+     local velocity=body.AssemblyLinearVelocity
+     body.AssemblyLinearVelocity=Vector3.new(velocity.X,math.max(velocity.Y,8+(6-body.Position.Y)*3),velocity.Z)
+    end
+   end
+  end)
+  local function lemonTool(player)
+   if player.Backpack:FindFirstChild("Лимоны") or player.Character:FindFirstChild("Лимоны") then
+    player:SetAttribute("WinterMessage","У тебя уже есть лимоны — выбери их, чтобы поесть") return
+   end
+   local tool=Instance.new("Tool") tool.Name="Лимоны" tool.RequiresHandle=true
+   local fruit=part("Handle",Vector3.new(0.9,0.9,1.4),Vector3.zero,Color3.fromRGB(255,222,48),nil,tool)
+   fruit.Shape=Enum.PartType.Ball fruit.Anchored,fruit.CanCollide,fruit.Massless=false,false,true
+   local bites,last=8,-10
+   tool:SetAttribute("LemonsLeft",bites)
+   tool.Activated:Connect(function()
+    if tool.Parent~=player.Character or bites<=0 or os.clock()-last<2 then return end
+    local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health<=0 then return end
+    last=os.clock() bites-=1 tool:SetAttribute("LemonsLeft",bites)
+    humanoid.Health=math.min(humanoid.MaxHealth,humanoid.Health+10)
+    tool.Grip=CFrame.new(0,-0.4,-0.5)*CFrame.Angles(-1,0,0)
+    player:SetAttribute("WinterMessage","Кисленько! +10 HP. Лимонов осталось: "..bites)
+    task.delay(0.6,function() if tool.Parent then tool.Grip=CFrame.new() end end)
+    if bites==0 then tool:Destroy() end
+   end)
+   tool.Parent=player.Backpack
+   player:SetAttribute("WinterMessage","В подарке целая куча лимонов! Взято 8: выбери «Лимоны» и нажми, чтобы съесть")
+  end
+  prompt(plaque,"Взять угощение",lemonTool)
+
+ end
+ setupLemonGift()
+ local beacon=build("Дом Насти — укрытие от бури",Vector3.new(2,5,2),Vector3.new(0,3,25),gold)
+ sign(beacon,"Двухэтажный дом Насти\nМакарошки • укрытие от бури",Vector3.new(0,5,0))
+ local direction=part("Указатель к Насте",Vector3.new(2,4,2),Vector3.new(24,2,46),gold)
+ sign(direction,"Дом мамы Насти →\nУ леса: справа и вперёд от ёлки",Vector3.new(0,5,0))
+ task.spawn(function() while world.Parent do task.wait(1) state.step(1) end end)
+ return state
+end
+local stormState=setupBlizzard()
+
+local function setupWinterPhones()
+ local remote=Instance.new("RemoteEvent") remote.Name="WinterPhoneAction" remote.Parent=ReplicatedStorage
+ local calls,lastAction={},{}
+ local phrases={"Привет! Как дела?","Приходи к Леону смотреть котиков!","Идём купаться в лимонах!","Скоро буря — заходи в дом!","Встретимся у ёлки!"}
+ local function message(player,text) player:SetAttribute("PhoneLine",text) end
+ local function hasPhone(player)
+  return player.Character and (player.Character:FindFirstChild("Телефон") or (player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Телефон")))
+ end
+ local function clear(player,line)
+  local call=calls[player] if not call then return end
+  calls[player]=nil player:SetAttribute("PhoneState","idle") player:SetAttribute("PhonePeer",nil) player:SetAttribute("PhoneIncoming",nil)
+  message(player,line or "Звонок завершён")
+  local peer=call.a==player and call.b or call.a
+  if type(peer)~="string" and peer and calls[peer]==call then
+   calls[peer]=nil peer:SetAttribute("PhoneState","idle") peer:SetAttribute("PhonePeer",nil) peer:SetAttribute("PhoneIncoming",nil)
+   message(peer,line or "Собеседник завершил звонок")
+  end
+ end
+ local function give(player)
+  if hasPhone(player) then player:SetAttribute("WinterMessage","Телефон уже у тебя: выбери его и нажми, чтобы открыть контакты") return end
+  local tool=Instance.new("Tool") tool.Name="Телефон" tool.RequiresHandle=true
+  local handle=part("Handle",Vector3.new(0.8,1.4,0.16),Vector3.zero,Color3.fromRGB(37,46,67),Enum.Material.Metal,tool)
+  handle.Anchored,handle.CanCollide,handle.Massless=false,false,true
+  local display=part("Экран телефона",Vector3.new(0.67,1.1,0.03),Vector3.new(0,0,0.1),Color3.fromRGB(101,210,170),Enum.Material.Neon,tool)
+  display.Anchored,display.CanCollide,display.Massless=false,false,true
+  local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=handle,display,handle
+  tool.Activated:Connect(function() if tool.Parent==player.Character then player:SetAttribute("PhoneOpen",not player:GetAttribute("PhoneOpen")) end end)
+  tool.Parent=player:FindFirstChild("Backpack")
+  player:SetAttribute("WinterMessage","Телефон получен! Выбери его и нажми — контакты, звонки и сообщения")
+ end
+ local function station(name,position)
+  local tableTop=part(name,Vector3.new(2,0.35,3),position,Color3.fromRGB(39,63,81),Enum.Material.Metal)
+  part("Трубка домашнего телефона",Vector3.new(1.5,0.35,0.7),position+Vector3.new(0,0.3,0.5),gold,nil,tableTop)
+  prompt(tableTop,"Взять телефон",give)
+ end
+ station("Телефон у Насти",Vector3.new(151,4.6,-336))
+ station("Телефон у Леона",Vector3.new(245,4,-335))
+ station("Телефон из подарка",Vector3.new(96,8.5,-292))
+ for _,item in world:GetDescendants() do
+  if item.Name=="Леон" and item:IsA("BasePart") then
+   prompt(item,"Подарить телефон",function(player)
+    local tool=hasPhone(player)
+    if not tool then player:SetAttribute("WinterMessage","Возьми телефон в подарке или дома") return end
+    clear(player) tool:Destroy() player:SetAttribute("PhoneOpen",false)
+    item:SetAttribute("HasMobilePhone",true)
+    player:SetAttribute("WinterMessage","Леон: Спасибо за телефон! Возьми себе ещё один — будем созваниваться!")
+   end,"F")
+   break
+  end
+ end
+ remote.OnServerEvent:Connect(function(player,action,target)
+  if type(action)~="string" then return end
+  if action=="close" then player:SetAttribute("PhoneOpen",false) return end
+  if action=="hangup" then clear(player) return end
+  if not hasPhone(player) then return end
+  if os.clock()-(lastAction[player] or -10)<0.25 then return end lastAction[player]=os.clock()
+  if action=="call" then
+   if calls[player] then return end
+   local peer
+   if target=="Леон" or target=="Настя" then peer=target
+   elseif type(target)=="number" then
+    for _,other in Players:GetPlayers() do if other.UserId==target and other~=player then peer=other break end end
+    if not peer or not hasPhone(peer) then message(player,"У этого игрока пока нет телефона") return end
+    if calls[peer] then message(player,"Абонент занят") return end
+   else return end
+   local call={a=player,b=peer,active=type(peer)=="string"} calls[player]=call
+   player:SetAttribute("PhonePeer",type(peer)=="string" and peer or peer.Name)
+   player:SetAttribute("PhoneState",call.active and "active" or "calling") player:SetAttribute("PhoneOpen",true)
+   if type(peer)=="string" then
+    message(player,peer=="Леон" and "Леон: Привет! Приходи смотреть котиков и купаться в лимонах!" or "Настя: Привет! Макарошки готовы, заходи погреться!")
+   else
+    calls[peer]=call peer:SetAttribute("PhoneState","incoming") peer:SetAttribute("PhoneIncoming",player.UserId)
+    peer:SetAttribute("PhonePeer",player.Name) peer:SetAttribute("PhoneOpen",true)
+    message(peer,"Входящий звонок от "..player.Name) message(player,"Вызываем "..peer.Name.."…")
+    task.delay(20,function() if calls[player]==call and not call.active then clear(player,"Нет ответа") end end)
+   end
+  elseif action=="accept" then
+   local call=calls[player]
+   if not call or call.b~=player or call.active then return end
+   if not hasPhone(call.a) then clear(player) return end
+   call.active=true
+   for _,person in {call.a,call.b} do person:SetAttribute("PhoneState","active") person:SetAttribute("PhoneIncoming",nil) message(person,"На связи! Выбери реплику ниже") end
+  elseif action=="say" then
+   local call=calls[player]
+   if not call or not call.active or type(target)~="number" or not phrases[target] then return end
+   local peer=call.a==player and call.b or call.a
+   message(player,"Ты: "..phrases[target])
+   if type(peer)=="string" then message(player,peer..(peer=="Леон" and ": Отличная идея! Буду ждать тебя дома." or ": Хорошо! Береги себя и приходи на чай."))
+   else message(peer,player.Name..": "..phrases[target]) end
+  end
+ end)
+ RunService.Heartbeat:Connect(function()
+  for player,call in calls do
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if not hasPhone(player) or not humanoid or humanoid.Health<=0 then clear(player,"Связь прервана") end
+  end
+ end)
+ Players.PlayerRemoving:Connect(function(player) clear(player,"Абонент вышел из игры") lastAction[player]=nil end)
+ return {calls=calls,give=give,remote=remote}
+end
+local phoneState=setupWinterPhones()
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="3">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="4">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="LocalScript" referent="5">
+        <Properties>
+          <string name="Name">WinterClient</string>
+          <string name="Source"><![CDATA[local Players=game:GetService("Players")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local player=Players.LocalPlayer
+local mouse=player:GetMouse()
+local TweenService=game:GetService("TweenService")
+local UserInputService=game:GetService("UserInputService")
+local RunService=game:GetService("RunService")
+local gui=Instance.new("ScreenGui")
+gui.Name,gui.ResetOnSpawn="WinterHUD",false
+gui.Parent=player:WaitForChild("PlayerGui")
+local label=Instance.new("TextLabel")
+label.Size,label.Position=UDim2.new(0,310,0,54),UDim2.new(0,16,1,-118)
+label.BackgroundColor3,label.BackgroundTransparency=Color3.fromRGB(20,39,55),0.15
+label.TextColor3,label.Font,label.TextSize=Color3.fromRGB(255,239,205),Enum.Font.GothamBold,14
+label.TextWrapped=true
+label.Parent=gui
+local corner=Instance.new("UICorner")
+corner.CornerRadius=UDim.new(0,12)
+corner.Parent=label
+local ingredientAttributes={["Палочки"]="InventorySticks",["Морковка"]="InventoryCarrot",["Ведёрко"]="InventoryBucket"}
+local function update()
+ local size=player:GetAttribute("SnowSize") or 0
+ local found={}
+ for _,name in {"Палочки","Морковка","Ведёрко"} do
+  if player:GetAttribute(ingredientAttributes[name]) then table.insert(found,name) end
+ end
+ label.Text="❄ ЗИМНИЙ ПАРК • v13.1 ❄\n"..(size>0 and ("Ком: "..size.." / 4 м • Q — оставить") or "E — взаимодействие • снежки наносят урон")
+ if #found>0 then label.Text..="\n"..table.concat(found," • ") end
+ if player:GetAttribute("DeerCarrots") then label.Text..="\nМорковок для оленя: "..player:GetAttribute("DeerCarrots") end
+end
+label.Size=UDim2.new(0,330,0,78)
+update()
+for _,name in {"SnowSize","InventorySticks","InventoryCarrot","InventoryBucket","DeerCarrots"} do player:GetAttributeChangedSignal(name):Connect(update) end
+player:GetAttributeChangedSignal("WinterMessage"):Connect(function()
+ label.Text=player:GetAttribute("WinterMessage") or ""
+ task.delay(4,update)
+end)
+local drop=Instance.new("TextButton")
+drop.Text,drop.Size,drop.Position="Оставить ком",UDim2.fromOffset(140,38),UDim2.new(1,-155,1,-170)
+drop.BackgroundColor3,drop.TextColor3=Color3.fromRGB(30,60,80),Color3.new(1,1,1)
+drop.Parent=gui
+local function dropBall() ReplicatedStorage:WaitForChild("StopRollingSnow"):FireServer() end
+drop.Activated:Connect(dropBall)
+player:GetAttributeChangedSignal("SnowSize"):Connect(function() drop.Visible=(player:GetAttribute("SnowSize") or 0)>0 end)
+drop.Visible=false
+UserInputService.InputBegan:Connect(function(input,processed)
+ if not processed and input.KeyCode==Enum.KeyCode.Q then dropBall() end
+end)
+local dialogue=Instance.new("Frame")
+dialogue.Size,dialogue.Position,dialogue.AnchorPoint=UDim2.new(0.9,0,0,340),UDim2.fromScale(0.5,0.5),Vector2.new(0.5,0.5)
+dialogue.BackgroundColor3,dialogue.Visible=Color3.fromRGB(24,47,57),false
+dialogue.Parent=gui
+local limit=Instance.new("UISizeConstraint") limit.MaxSize=Vector2.new(430,340) limit.Parent=dialogue
+local rounding=Instance.new("UICorner") rounding.CornerRadius=UDim.new(0,14) rounding.Parent=dialogue
+local speech=Instance.new("TextLabel")
+speech.Size,speech.Position=UDim2.new(1,-32,0,142),UDim2.fromOffset(16,12)
+speech.BackgroundTransparency,speech.TextWrapped,speech.TextSize=1,true,17
+speech.Font,speech.TextColor3=Enum.Font.Gotham,Color3.fromRGB(255,239,214)
+speech.Parent=dialogue
+local answers={
+ {"Как кататься на коньках?","🎅 Дед Мороз\nВозьми коньки у зелёного проката перед катком. На льду двигайся обычными клавишами: разгон и торможение плавные. Без коньков поскользнёшься! Для выхода есть проход у проката; X снимает коньки в любом месте."},
+ {"Как собрать снеговика?","🎅 Дед Мороз\nНайди веточки, морковку и ведёрко. Накатай ком до 4 метров и принеси его на поляну снеговиков. Можно построить несколько — у каждого своя подсказка удаления."},
+ {"Как подружиться с оленем?","🎅 Дед Мороз\nЭто мои олени! Возьми морковки из мешочка на боку оленя, выбери морковку и нажми рядом с ним. Он пойдёт за тобой — можно привести к камину и угощать, пока ты пьёшь чай. Без упряжи или друга олени ждут санки."},
+ {"До встречи!",false},
+}
+for i,answer in answers do
+ local button=Instance.new("TextButton")
+ button.Size,button.Position=UDim2.new(1,-32,0,36),UDim2.fromOffset(16,154+(i-1)*43)
+ button.BackgroundColor3,button.TextColor3=Color3.fromRGB(50,91,86),Color3.fromRGB(255,246,226)
+ button.Text,button.TextSize,button.Font=answer[1],15,Enum.Font.GothamBold
+ button.Parent=dialogue
+ button.Activated:Connect(function()
+  if answer[2] then speech.Text=answer[2] else dialogue.Visible=false end
+ end)
+end
+player:GetAttributeChangedSignal("SantaGreeting"):Connect(function()
+ speech.Text="🎅 Дед Мороз\nС праздником, друг! Заходи погреться, прокатись по льду или слепи снеговика. О чём хочешь спросить?"
+ dialogue.Visible=true
+end)
+-- Public-domain Jingle Bells melody, arranged from built-in bell-like notes.
+local SoundService=game:GetService("SoundService")
+local musicGroup=Instance.new("SoundGroup")
+musicGroup.Name,musicGroup.Volume,musicGroup.Parent="HolidayMusic",0.055,SoundService
+local musicToggle=Instance.new("TextButton")
+musicToggle.Size,musicToggle.Position=UDim2.fromOffset(144,32),UDim2.new(1,-160,0,14)
+musicToggle.Text,musicToggle.TextSize="♫ Музыка: вкл",14
+musicToggle.BackgroundColor3,musicToggle.TextColor3=Color3.fromRGB(28,55,67),Color3.fromRGB(255,239,214)
+musicToggle.Parent=gui
+musicToggle.Activated:Connect(function()
+ musicGroup.Volume=musicGroup.Volume>0 and 0 or 0.055
+ musicToggle.Text=musicGroup.Volume>0 and "♫ Музыка: вкл" or "♫ Музыка: выкл"
+end)
+local tune={
+ {76,1},{76,1},{76,2},{76,1},{76,1},{76,2},
+ {76,1},{79,1},{72,1.5},{74,0.5},{76,4},
+ {77,1},{77,1},{77,1.5},{77,0.5},{77,1},{76,1},{76,1},{76,0.5},{76,0.5},
+ {76,1},{74,1},{74,1},{76,1},{74,2},{79,2},
+ {76,1},{76,1},{76,2},{76,1},{76,1},{76,2},
+ {76,1},{79,1},{72,1.5},{74,0.5},{76,4},
+ {77,1},{77,1},{77,1},{77,1},{77,1},{76,1},{76,1},{76,0.5},{76,0.5},
+ {79,1},{79,1},{77,1},{74,1},{72,4},
+}
+task.spawn(function()
+ while gui.Parent do
+  for _,note in tune do
+   if musicGroup.Volume>0 then
+    local chime=Instance.new("Sound")
+    chime.SoundId,chime.Volume,chime.SoundGroup="rbxasset://sounds/electronicpingshort.wav",0.6,musicGroup
+    chime.PlaybackSpeed=2^((note[1]-76)/12)
+    chime.Parent=SoundService
+    chime:Play()
+    game:GetService("Debris"):AddItem(chime,2.5)
+   end
+   task.wait(note[2]*0.32)
+  end
+  task.wait(3)
+ end
+end)
+-- Skating has no persistent force objects: every exit restores normal character control.
+local skateVelocity=Vector3.zero
+local skateHumanoid,skateRoot
+local skateEffects={}
+local hasSkated,pendingRemoval=false,false
+local function clearOldForces(root)
+ if not root then return end
+ for _,child in root:GetChildren() do
+  if child.Name=="SkatingMomentum" then child:Destroy() end
+ end
+end
+local function finishSkating()
+ local wasActive=skateHumanoid~=nil
+ for _,effect in skateEffects do if effect.Parent then effect.Enabled=false end end
+ table.clear(skateEffects)
+ if skateHumanoid and skateHumanoid.Parent then
+  skateHumanoid.WalkSpeed,skateHumanoid.AutoRotate,skateHumanoid.PlatformStand=16,true,false
+ end
+ if skateRoot and skateRoot.Parent then
+  clearOldForces(skateRoot)
+  if wasActive then
+   skateRoot.AssemblyLinearVelocity=Vector3.new(0,skateRoot.AssemblyLinearVelocity.Y,0)
+   skateRoot.AssemblyAngularVelocity=Vector3.zero
+  end
+ end
+ skateHumanoid,skateRoot=nil,nil
+ skateVelocity=Vector3.zero
+end
+local removeButton=Instance.new("TextButton")
+removeButton.Size,removeButton.Position=UDim2.fromOffset(170,36),UDim2.new(1,-185,1,-215)
+removeButton.Text,removeButton.TextSize="Снять коньки • X",14
+removeButton.BackgroundColor3,removeButton.TextColor3=Color3.fromRGB(40,70,86),Color3.fromRGB(255,245,220)
+removeButton.Visible,removeButton.Parent=false,gui
+local function requestRemoveSkates()
+ finishSkating()
+ if pendingRemoval then return end
+ pendingRemoval=true
+ ReplicatedStorage:WaitForChild("RemoveSkates"):FireServer()
+end
+removeButton.Activated:Connect(requestRemoveSkates)
+local function resetSkateSession()
+ finishSkating()
+ hasSkated,pendingRemoval=false,false
+ removeButton.Visible=player:GetAttribute("SkatesEquipped")==true
+ local character=player.Character
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ clearOldForces(root)
+ if humanoid then humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=16,true,false end
+end
+player:GetAttributeChangedSignal("SkatesEquipped"):Connect(resetSkateSession)
+player:GetAttributeChangedSignal("SkateSession"):Connect(resetSkateSession)
+player.CharacterAdded:Connect(resetSkateSession)
+UserInputService.InputBegan:Connect(function(input,processed)
+ if not processed and input.KeyCode==Enum.KeyCode.X then requestRemoveSkates() end
+end)
+RunService.Heartbeat:Connect(function(dt)
+ local character=player.Character
+ local root=character and character:FindFirstChild("HumanoidRootPart")
+ local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+ local pos=root and root.Position
+ local inBounds=pos and math.abs(pos.X+105)<28.5 and math.abs(pos.Z-75)<21.5
+ local equipped=player:GetAttribute("SkatesEquipped")==true
+ if hasSkated and equipped and not inBounds then requestRemoveSkates() return end
+ local onIce=inBounds and pos.Y>1 and pos.Y<9
+ if pendingRemoval or not equipped or not onIce or not humanoid or humanoid.Health<=0 then finishSkating() return end
+ if skateHumanoid~=humanoid or skateRoot~=root then
+  finishSkating()
+  skateHumanoid,skateRoot=humanoid,root
+  clearOldForces(root)
+  humanoid.WalkSpeed,humanoid.AutoRotate,humanoid.PlatformStand=24,true,false
+  local gear=character:FindFirstChild("SkateGear")
+  if gear then
+   for _,effect in gear:GetDescendants() do
+    if effect:IsA("Trail") or effect:IsA("ParticleEmitter") then table.insert(skateEffects,effect) end
+   end
+  end
+ end
+ hasSkated=true
+ local input=humanoid.MoveDirection
+ local desired=Vector3.new(input.X,0,input.Z)*27
+ local response=input.Magnitude>0.05 and 4 or 0.6
+ skateVelocity=skateVelocity:Lerp(desired,1-math.exp(-math.min(dt,0.1)*response))
+ -- Apply velocity after physics; no BodyVelocity remains to pin the next session in place.
+ root.AssemblyLinearVelocity=Vector3.new(skateVelocity.X,root.AssemblyLinearVelocity.Y,skateVelocity.Z)
+ for _,effect in skateEffects do effect.Enabled=skateVelocity.Magnitude>3 end
+end)
+local waitButton=Instance.new("TextButton")
+waitButton.Size,waitButton.Position=UDim2.fromOffset(170,36),UDim2.new(1,-185,1,-258)
+waitButton.Text,waitButton.TextSize="Олень: ждать здесь",14
+waitButton.BackgroundColor3,waitButton.TextColor3=Color3.fromRGB(72,94,67),Color3.fromRGB(255,239,214)
+waitButton.Visible,waitButton.Parent=false,gui
+waitButton.Activated:Connect(function() ReplicatedStorage:WaitForChild("CarrotAction"):FireServer("wait") end)
+player:GetAttributeChangedSignal("CompanionDeer"):Connect(function() waitButton.Visible=player:GetAttribute("CompanionDeer")~=nil end)
+local boundTools=setmetatable({}, {__mode="k"})
+local function playSound(parent,id,volume,speed)
+ local audio=Instance.new("Sound")
+ audio.SoundId,audio.Volume,audio.PlaybackSpeed=id,volume,speed or 1
+ audio.Parent=parent
+ audio:Play()
+ game:GetService("Debris"):AddItem(audio,4)
+end
+local function aimPoint(character)
+ local camera=workspace.CurrentCamera
+ if not camera then return nil end
+ local ray
+ if UserInputService.TouchEnabled then
+  ray=camera:ViewportPointToRay(camera.ViewportSize.X/2,camera.ViewportSize.Y/2)
+ else
+  ray=mouse.UnitRay
+ end
+ local params=RaycastParams.new()
+ params.FilterType=Enum.RaycastFilterType.Exclude
+ params.FilterDescendantsInstances={character}
+ local hit=workspace:Raycast(ray.Origin,ray.Direction*350,params)
+ return hit and hit.Position or ray.Origin+ray.Direction*350
+end
+local function characterAdded(character)
+ local function bind(child)
+  if not child:IsA("Tool") or boundTools[child] then return end
+  if child.Name~="Снежки" and child.Name~="Горячий чай" and child.Name~="Морковка для оленя" then return end
+  boundTools[child]=true
+  local last=0
+  local originalGrip=child.Grip
+  local shoulder,originalC0,tween,connection
+  local function restore()
+   if connection then connection:Disconnect() connection=nil end
+   if tween then tween:Cancel() tween=nil end
+   if shoulder and shoulder.Parent and originalC0 then shoulder.C0=originalC0 end
+   child.Grip=originalGrip
+  end
+  child.Unequipped:Connect(restore)
+  child.Activated:Connect(function()
+   local tea=child.Name=="Горячий чай"
+   local feeding=child.Name=="Морковка для оленя"
+   if child.Parent~=character or os.clock()-last<(tea and 2.4 or 0.9) then return end
+   last=os.clock()
+   -- Gameplay is sent BEFORE optional arm/sound effects; an animation error cannot block throwing.
+   if feeding then
+    ReplicatedStorage:WaitForChild("CarrotAction"):FireServer("feed")
+   elseif not tea then
+    local target=aimPoint(character)
+    if target then ReplicatedStorage:WaitForChild("ThrowSnowball"):FireServer(target) end
+   end
+   restore()
+   local handle=child:FindFirstChild("Handle")
+   local humanoid=character:FindFirstChildOfClass("Humanoid")
+   shoulder=character:FindFirstChild("RightShoulder",true) or character:FindFirstChild("Right Shoulder",true)
+   if shoulder then
+    originalC0=shoulder.C0
+    local r6=humanoid and humanoid.RigType==Enum.HumanoidRigType.R6
+    local angle=tea and 110 or 85
+    local pose=r6 and CFrame.Angles(0,0,math.rad(angle)) or CFrame.Angles(math.rad(angle),0,math.rad(-12))
+    tween=TweenService:Create(shoulder,TweenInfo.new(0.3,Enum.EasingStyle.Sine),{C0=originalC0*pose})
+    tween:Play()
+   end
+   local started=os.clock()
+   if tea and handle then
+    label.Text="☕ Пьём горячий чай…"
+    task.delay(0.35,function()
+     if child.Parent==character then playSound(handle,"rbxasset://sounds/action_swim.mp3",0.65,1.5) end
+    end)
+   end
+   connection=RunService.PreSimulation:Connect(function()
+    local elapsed=os.clock()-started
+    if child.Parent~=character or elapsed>(tea and 1.8 or 0.55) then restore() update() return end
+    if tea and elapsed>0.3 then
+     local tilt=math.sin(math.clamp((elapsed-0.3)/1.5,0,1)*math.pi)
+     child.Grip=originalGrip*CFrame.new(0,-0.2*tilt,-0.25*tilt)*CFrame.Angles(math.rad(-28*tilt),0,0)
+    end
+   end)
+  end)
+ end
+ character.ChildAdded:Connect(bind)
+ for _,child in character:GetChildren() do bind(child) end
+end
+player.CharacterAdded:Connect(characterAdded)
+if player.Character then characterAdded(player.Character) end
+-- Pickups are personal: hide collected ingredients only for their collector.
+local collectibles={}
+for _,on in workspace:GetDescendants() do
+ if on:IsA("BasePart") and on:GetAttribute("IngredientKey") then table.insert(collectibles,on) end
+end
+local function refreshCollectibles()
+ for _,on in collectibles do
+  local owned=player:GetAttribute(on:GetAttribute("IngredientKey"))==true
+  on.LocalTransparencyModifier=owned and 1 or 0
+  for _,child in on:GetChildren() do
+   if child:IsA("ProximityPrompt") or child:IsA("BillboardGui") then child.Enabled=not owned end
+  end
+ end
+end
+for _,key in ingredientAttributes do player:GetAttributeChangedSignal(key):Connect(refreshCollectibles) end
+refreshCollectibles()
+local crosshair=Instance.new("TextLabel")
+crosshair.Size,crosshair.Position,crosshair.AnchorPoint=UDim2.fromOffset(24,24),UDim2.fromScale(0.5,0.5),Vector2.new(0.5,0.5)
+crosshair.BackgroundTransparency,crosshair.Text,crosshair.TextSize=1,"+",24
+crosshair.TextColor3,crosshair.TextStrokeTransparency=Color3.new(1,1,1),0.3
+crosshair.Parent=gui
+crosshair.Visible=UserInputService.TouchEnabled
+-- Snow follows the local character, keeping the effect inexpensive.
+local emitterPart=Instance.new("Part")
+emitterPart.Name,emitterPart.Size="LocalSnow",Vector3.new(90,1,90)
+emitterPart.Anchored,emitterPart.CanCollide,emitterPart.CanQuery,emitterPart.Transparency=true,false,false,1
+emitterPart.Parent=workspace
+local flakes=Instance.new("ParticleEmitter")
+flakes.Texture="rbxasset://textures/particles/sparkles_main.dds"
+flakes.Rate,flakes.Lifetime,flakes.Speed=240,NumberRange.new(7,10),NumberRange.new(5,8)
+flakes.EmissionDirection=Enum.NormalId.Bottom
+flakes.SpreadAngle=Vector2.new(15,15)
+flakes.Size=NumberSequence.new(0.2)
+flakes.LightInfluence=0
+flakes.Rotation=NumberRange.new(0,360)
+flakes.RotSpeed=NumberRange.new(-25,25)
+flakes.Acceleration=Vector3.new(1,-1,0)
+flakes.Parent=emitterPart
+local snowWaveParts={}
+for _,item in workspace:WaitForChild("WinterVillage"):WaitForChild("Огромная движущаяся волна снега"):GetDescendants() do
+ if item:IsA("BasePart") then table.insert(snowWaveParts,item) end
+end
+task.spawn(function()
+ while emitterPart.Parent do
+  local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+  if root then
+   emitterPart.Position=root.Position+Vector3.new(0,35,0)
+   local pos=root.Position
+   local indoors=(math.abs(pos.X+43)<15 and math.abs(pos.Z+22)<14 and pos.Y<24)
+    or (math.abs(pos.X-58)<15 and math.abs(pos.Z+40)<14 and pos.Y<24)
+    or (math.abs(pos.X+130)<15 and math.abs(pos.Z+100)<14 and pos.Y<24)
+    or (math.abs(pos.X+40)<15 and math.abs(pos.Z-125)<14 and pos.Y<24)
+   indoors=indoors or (math.abs(pos.X-155)<20.5 and math.abs(pos.Z+340)<18.5 and pos.Y<26)
+   indoors=indoors or (math.abs(pos.X-235)<28 and math.abs(pos.Z+345)<24 and pos.Y<31)
+   local storm=workspace:GetAttribute("BlizzardActive")
+   flakes.Rate=storm and 850 or 240
+   flakes.Speed=storm and NumberRange.new(25,38) or NumberRange.new(5,8)
+   flakes.Acceleration=storm and Vector3.new(35,-8,12) or Vector3.new(1,-1,0)
+   if indoors and flakes.Enabled then flakes:Clear() end
+   flakes.Enabled=not indoors
+   for _,item in snowWaveParts do item.LocalTransparencyModifier=indoors and 1 or 0 end
+  end
+  task.wait(0.3)
+ end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+ if player:GetAttribute("MountainGear") then ReplicatedStorage:WaitForChild("LeaveMountainRide"):FireServer() end
+end)
+
+local dismount=Instance.new("TextButton")
+dismount.Size,dismount.Position=UDim2.fromOffset(175,40),UDim2.new(1,-190,1,-300)
+dismount.Text,dismount.TextSize="Сойти со снаряжения",14
+dismount.BackgroundColor3,dismount.TextColor3=Color3.fromRGB(72,85,103),Color3.fromRGB(255,239,214)
+dismount.Visible,dismount.Parent=false,gui
+dismount.Activated:Connect(function() ReplicatedStorage:WaitForChild("LeaveMountainRide"):FireServer() end)
+player:GetAttributeChangedSignal("MountainGear"):Connect(function() dismount.Visible=player:GetAttribute("MountainGear")~=nil end)
+
+-- Controls apply only while this player drives equipment on the large mountain.
+local alpineTouchX,alpineTouchY=0,0
+local alpineButtons={}
+for i,entry in {{"◀",-1,0},{"▶",1,0},{"Разгон",0,1},{"Тормоз",0,-1}} do
+ local button=Instance.new("TextButton")
+ button.Size,button.Position=UDim2.fromOffset(66,46),UDim2.new(1,-290+(i-1)*70,1,-155)
+ button.Text,button.TextSize,button.Visible=entry[1],14,false
+ button.BackgroundColor3,button.TextColor3=Color3.fromRGB(35,62,80),Color3.fromRGB(255,240,214)
+ button.Parent=gui
+ button.MouseButton1Down:Connect(function() if entry[2]~=0 then alpineTouchX=entry[2] else alpineTouchY=entry[3] end end)
+ button.MouseButton1Up:Connect(function() if entry[2]~=0 then alpineTouchX=0 else alpineTouchY=0 end end)
+ table.insert(alpineButtons,button)
+end
+local alpineSpeed=Instance.new("TextLabel")
+alpineSpeed.Size,alpineSpeed.Position=UDim2.fromOffset(285,38),UDim2.new(1,-300,1,-202)
+alpineSpeed.BackgroundTransparency,alpineSpeed.TextSize,alpineSpeed.TextColor3=0.2,15,Color3.fromRGB(255,240,214)
+alpineSpeed.BackgroundColor3,alpineSpeed.Visible,alpineSpeed.Parent=Color3.fromRGB(35,62,80),false,gui
+local spawnBoost=false
+local driftTouch=false
+local driftButton=Instance.new("TextButton")
+driftButton.Size,driftButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,104)
+driftButton.Text,driftButton.TextSize,driftButton.Visible="Дрифт • C",15,false
+driftButton.BackgroundColor3,driftButton.TextColor3=Color3.fromRGB(60,83,118),Color3.fromRGB(255,239,214)
+driftButton.Parent=gui
+driftButton.MouseButton1Down:Connect(function() driftTouch=true end)
+driftButton.MouseButton1Up:Connect(function() driftTouch=false end)
+local boostButton=Instance.new("TextButton")
+boostButton.Size,boostButton.Position=UDim2.fromOffset(125,36),UDim2.new(1,-140,0,60)
+boostButton.Text,boostButton.TextSize,boostButton.Visible="Форсаж",15,false
+boostButton.BackgroundColor3,boostButton.TextColor3=Color3.fromRGB(150,76,45),Color3.fromRGB(255,239,214)
+boostButton.Parent=gui
+boostButton.MouseButton1Down:Connect(function() spawnBoost=true end)
+boostButton.MouseButton1Up:Connect(function() spawnBoost=false end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.Touch then spawnBoost=false driftTouch=false end end)
+local function updateAlpineHUD()
+ local driving=player:GetAttribute("MountainDriving")==true or player:GetAttribute("GroundDriving")~=nil
+ boostButton.Visible=player:GetAttribute("GroundDriving")=="Реактивные сани"
+ if not boostButton.Visible then spawnBoost=false end
+ driftButton.Visible=driving
+ if not driving then driftTouch=false end
+ for _,button in alpineButtons do button.Visible=driving end
+ alpineSpeed.Visible=driving
+ alpineSpeed.Text="Скорость: "..tostring(player:GetAttribute("GroundSpeed") or player:GetAttribute("MountainSpeed") or 0).." • A/D поворот • W/S скорость"
+ if not driving then alpineTouchX,alpineTouchY=0,0 end
+end
+player:GetAttributeChangedSignal("MountainDriving"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("MountainSpeed"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("GroundDriving"):Connect(updateAlpineHUD)
+player:GetAttributeChangedSignal("GroundSpeed"):Connect(updateAlpineHUD)
+UserInputService.InputEnded:Connect(function(input)
+ if input.UserInputType==Enum.UserInputType.Touch then alpineTouchX,alpineTouchY=0,0 end
+end)
+local alpineInputTime=0
+RunService.Heartbeat:Connect(function(dt)
+ if not player:GetAttribute("MountainDriving") and not player:GetAttribute("GroundDriving") then alpineInputTime=0 return end
+ alpineInputTime+=dt
+ if alpineInputTime<0.1 then return end alpineInputTime=0
+ local x,y=alpineTouchX,alpineTouchY
+ if not UserInputService:GetFocusedTextBox() then
+  if UserInputService:IsKeyDown(Enum.KeyCode.A) then x-=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.D) then x+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
+  if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
+ end
+ local ground=player:GetAttribute("GroundDriving")
+ local boost=(spawnBoost or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)) and 1 or 0
+ ReplicatedStorage:WaitForChild(ground and "GroundVehicleControl" or "MountainControl"):FireServer(Vector3.new(math.clamp(x,-1,1),math.clamp(y,-1,1),boost),driftTouch or UserInputService:IsKeyDown(Enum.KeyCode.C))
+end)
+
+local function setupFlightControls()
+ local wheelClimb=0
+ local wheelBound=false
+ local actions=game:GetService("ContextActionService")
+ local touchTurn,touchThrottle,touchClimb=0,0,0
+ local buttons={}
+ local flightHUD=Instance.new("TextLabel")
+ flightHUD.Size,flightHUD.Position=UDim2.fromOffset(360,86),UDim2.fromOffset(16,110)
+ flightHUD.BackgroundColor3,flightHUD.BackgroundTransparency=Color3.fromRGB(27,52,73),0.15
+ flightHUD.TextColor3,flightHUD.Font,flightHUD.TextSize=Color3.fromRGB(255,241,219),Enum.Font.GothamBold,14
+ flightHUD.TextWrapped,flightHUD.Visible,flightHUD.Parent=true,false,gui
+ local jumpButton=Instance.new("TextButton")
+ jumpButton.Size,jumpButton.Position=UDim2.fromOffset(175,40),UDim2.new(1,-190,0,148)
+ jumpButton.Text,jumpButton.TextSize,jumpButton.Visible="Парашют • R",15,false
+ jumpButton.BackgroundColor3,jumpButton.TextColor3=Color3.fromRGB(91,70,110),Color3.fromRGB(255,241,219)
+ jumpButton.Parent=gui
+ local function jump() ReplicatedStorage:WaitForChild("AircraftAction"):FireServer("jump") end
+ jumpButton.Activated:Connect(jump)
+ for i,entry in {{"◀",-1,0,0},{"▶",1,0,0},{"Газ",0,1,0},{"Тормоз",0,-1,0},{"Выше",0,0,1},{"Ниже",0,0,-1}} do
+  local button=Instance.new("TextButton")
+  button.Size,button.Position=UDim2.fromOffset(58,44),UDim2.new(1,-375+(i-1)*61,1,-205)
+  button.Text,button.TextSize,button.Visible=entry[1],13,false
+  button.BackgroundColor3,button.TextColor3=Color3.fromRGB(42,75,104),Color3.fromRGB(255,241,219)
+  button.Parent=gui
+  button.MouseButton1Down:Connect(function()
+   if entry[2]~=0 then touchTurn=entry[2] elseif entry[3]~=0 then touchThrottle=entry[3] else touchClimb=entry[4] end
+  end)
+  button.MouseButton1Up:Connect(function()
+   if entry[2]~=0 then touchTurn=0 elseif entry[3]~=0 then touchThrottle=0 else touchClimb=0 end
+  end)
+  table.insert(buttons,button)
+ end
+ local function refresh()
+  local pilot=player:GetAttribute("AircraftPilot")~=nil
+  local chute=player:GetAttribute("ParachuteOpen")==true
+  local passenger=player:GetAttribute("AircraftPassenger")~=nil
+  if pilot and not wheelBound then
+   wheelBound=true wheelClimb=0
+   actions:BindActionAtPriority("AircraftWheelHeight",function(_,_,input)
+    if not player:GetAttribute("AircraftPilot") then return Enum.ContextActionResult.Pass end
+    wheelClimb=math.clamp(wheelClimb-input.Position.Z*0.25,-1,1)
+    return Enum.ContextActionResult.Sink
+   end,false,3000,Enum.UserInputType.MouseWheel)
+  elseif not pilot and wheelBound then
+   wheelBound=false wheelClimb=0 actions:UnbindAction("AircraftWheelHeight")
+  end
+  flightHUD.Visible=pilot or passenger or chute
+  jumpButton.Visible=pilot or passenger or player:GetAttribute("HasParachute")==true
+  for i,button in buttons do button.Visible=pilot or (chute and i<=4) end
+  if chute then flightHUD.Text="ПАРАШЮТ\nWASD — направлять • приземление автоматически"
+  elseif pilot then flightHUD.Text="ПИЛОТ • скорость "..tostring(player:GetAttribute("FlightSpeed") or 0).." • высота "..tostring(player:GetAttribute("FlightHeight") or 0).."\nW/S — скорость • A/D — поворот • Колесо ↓ — вверх, ↑ — вниз • R — парашют"
+  else flightHUD.Text="ПАССАЖИР\nR или прыжок — покинуть самолёт с парашютом" end
+  if not pilot and not chute then touchTurn,touchThrottle,touchClimb=0,0,0 end
+ end
+ for _,attribute in {"AircraftPilot","AircraftPassenger","ParachuteOpen","HasParachute","FlightSpeed","FlightHeight"} do
+  player:GetAttributeChangedSignal(attribute):Connect(refresh)
+ end
+ UserInputService.InputBegan:Connect(function(input,processed)
+  if not processed and input.KeyCode==Enum.KeyCode.R then jump() end
+ end)
+ UserInputService.JumpRequest:Connect(function()
+  if player:GetAttribute("AircraftPilot") or player:GetAttribute("AircraftPassenger") then jump() end
+ end)
+ UserInputService.InputEnded:Connect(function(input)
+  if input.UserInputType==Enum.UserInputType.Touch then touchTurn,touchThrottle,touchClimb=0,0,0 end
+ end)
+ local timer=0
+ RunService.Heartbeat:Connect(function(dt)
+  local pilot=player:GetAttribute("AircraftPilot")~=nil
+  local chute=player:GetAttribute("ParachuteOpen")==true
+  if not pilot and not chute then timer=0 return end
+  timer+=dt if timer<0.1 then return end timer=0
+  local x,y,z=touchTurn,touchThrottle,(touchClimb~=0 and touchClimb or wheelClimb)
+  if not UserInputService:GetFocusedTextBox() then
+   if UserInputService:IsKeyDown(Enum.KeyCode.A) then x-=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.D) then x+=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.W) then y+=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.S) then y-=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.Up) then z=1 end
+   if UserInputService:IsKeyDown(Enum.KeyCode.Down) then z=-1 end
+  end
+  x,y,z=math.clamp(x,-1,1),math.clamp(y,-1,1),math.clamp(z,-1,1)
+  if chute then
+   local camera=workspace.CurrentCamera
+   local forward=camera and Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z) or Vector3.new(0,0,-1)
+   if forward.Magnitude<0.01 then forward=Vector3.new(0,0,-1) end forward=forward.Unit
+   local movement=Vector3.new(-forward.Z,0,forward.X)*x+forward*y
+   if movement.Magnitude>1 then movement=movement.Unit end
+   x,y,z=movement.X,movement.Z,0
+  end
+  ReplicatedStorage:WaitForChild("AircraftControl"):FireServer(Vector3.new(x,y,z))
+ end)
+ refresh()
+end
+setupFlightControls()
+
+local function setupPhoneAndWeatherHUD()
+ local timer=Instance.new("TextLabel") timer.Name="Таймер бури"
+ timer.Size,timer.Position=UDim2.new(0,330,0,40),UDim2.new(0,16,1,-166)
+ timer.BackgroundColor3,timer.BackgroundTransparency=Color3.fromRGB(24,47,65),0.1
+ timer.TextColor3,timer.TextSize,timer.TextWrapped=Color3.fromRGB(255,230,150),16,true timer.Parent=gui
+ local function forecast() timer.Text=workspace:GetAttribute("StormForecast") or "Прогноз погоды загружается…" end
+ workspace:GetAttributeChangedSignal("StormForecast"):Connect(forecast) forecast()
+ local panel=Instance.new("Frame") panel.Name="Телефонная книга" panel.Size=UDim2.new(0.9,0,0.8,0)
+ panel.Position,panel.AnchorPoint=UDim2.fromScale(0.5,0.5),Vector2.new(0.5,0.5)
+ panel.BackgroundColor3=Color3.fromRGB(24,39,58) panel.Visible=false panel.Parent=gui
+ local limit=Instance.new("UISizeConstraint") limit.MaxSize=Vector2.new(440,570) limit.Parent=panel
+ local title=Instance.new("TextLabel") title.Size=UDim2.new(1,-20,0,80) title.Position=UDim2.fromOffset(10,4)
+ title.TextColor3=Color3.new(1,1,1) title.BackgroundTransparency=1 title.TextSize=16 title.TextWrapped=true title.Parent=panel
+ local scroll=Instance.new("ScrollingFrame") scroll.Size=UDim2.new(1,-20,1,-100) scroll.Position=UDim2.fromOffset(10,90)
+ scroll.BackgroundTransparency=1 scroll.ScrollBarThickness=6 scroll.Parent=panel
+ local remote=ReplicatedStorage:WaitForChild("WinterPhoneAction")
+ local function render()
+  panel.Visible=player:GetAttribute("PhoneOpen")==true
+  title.Text="ТЕЛЕФОН • "..(player:GetAttribute("PhonePeer") or "Контакты").."\n"..(player:GetAttribute("PhoneLine") or "Звонки с игровыми репликами")
+  for _,item in scroll:GetChildren() do item:Destroy() end
+  local row=0
+  local function button(text,callback)
+   local item=Instance.new("TextButton") item.Size=UDim2.new(1,-8,0,38) item.Position=UDim2.fromOffset(0,row*44)
+   item.Text,item.TextSize,item.TextWrapped=text,15,true item.BackgroundColor3=Color3.fromRGB(55,92,111) item.TextColor3=Color3.new(1,1,1)
+   item.Parent=scroll item.Activated:Connect(callback) row+=1
+  end
+  local status=player:GetAttribute("PhoneState")
+  if status=="incoming" then button("Ответить",function() remote:FireServer("accept") end) end
+  if status=="active" then
+   for index,text in {"Привет! Как дела?","Приходи к Леону смотреть котиков!","Идём купаться в лимонах!","Скоро буря — заходи в дом!","Встретимся у ёлки!"} do
+    button(text,function() remote:FireServer("say",index) end)
+   end
+  elseif status~="incoming" and status~="calling" then
+   for _,name in {"Леон","Настя"} do button("Позвонить: "..name,function() remote:FireServer("call",name) end) end
+   for _,other in Players:GetPlayers() do
+    if other~=player then button("Позвонить: "..other.Name,function() remote:FireServer("call",other.UserId) end) end
+   end
+  end
+  if status=="active" or status=="incoming" or status=="calling" then button("Завершить / отклонить",function() remote:FireServer("hangup") end) end
+  button("Обновить контакты",function() render() end)
+  button("Закрыть телефон",function() remote:FireServer("close") end)
+  scroll.CanvasSize=UDim2.fromOffset(0,row*44)
+ end
+ for _,key in {"PhoneOpen","PhoneState","PhonePeer","PhoneLine"} do player:GetAttributeChangedSignal(key):Connect(render) end
+ render()
+end
+setupPhoneAndWeatherHUD()
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="Workspace" referent="6">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <float name="FallenPartsDestroyHeight">-60</float>
+      <bool name="FilteringEnabled">true</bool>
+      <bool name="NeedsPivotMigration">false</bool>
+    </Properties>
+    <Item class="Part" referent="7">
+      <Properties>
+        <string name="Name">SafetyFoundation</string>
+        <bool name="Anchored">true</bool>
+        <token name="BottomSurface">0</token>
+        <Color3uint8 name="Color3uint8">13426930</Color3uint8>
+        <token name="Material">1328</token>
+        <Vector3 name="Position">
+          <X>0</X>
+          <Y>-7</Y>
+          <Z>0</Z>
+        </Vector3>
+        <Vector3 name="size">
+          <X>1800</X>
+          <Y>2</Y>
+          <Z>1400</Z>
+        </Vector3>
+        <token name="TopSurface">0</token>
+      </Properties>
+    </Item>
+  </Item>
+</roblox>

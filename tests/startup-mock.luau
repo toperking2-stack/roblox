@@ -196,6 +196,7 @@ Random={new=function(seed)
  return {NextNumber=function(_,a,b) n=(n*16807)%2147483647 return a+(b-a)*(n/2147483647) end}
 end}
 PhysicalProperties={new=function(...) return {...} end}
+ColorSequence={new=function(...) return {...} end}
 NumberRange={new=function(...) return {...} end}
 NumberSequence={new=function(...) return {...} end}
 NumberSequenceKeypoint={new=function(...) return {...} end}
