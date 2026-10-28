@@ -49,6 +49,11 @@ local function count(name)
 end
 local function checkStorm()
  humanoid.MaxHealth=100
+ interact(named('Папа'))
+ assert(string.find(player:GetAttribute('WinterMessage'),'Папа:'),'upstairs dad dialogue')
+ interact(named('Посмотреть телевизор с папой'))
+ assert(named('Посмотреть телевизор с папой').Occupant==humanoid,'watch TV beside dad')
+ named('Посмотреть телевизор с папой').Occupant=nil humanoid.Sit=false
  assert(stormState.sheltered(Vector3.new(155,5,-340)),'Nastya ground floor shelter')
  assert(stormState.sheltered(Vector3.new(155,18,-340)),'Nastya second floor shelter')
  assert(not stormState.sheltered(Vector3.new(155,35,-340)),'roof is exposed')

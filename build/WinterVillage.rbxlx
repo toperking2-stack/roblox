@@ -2135,6 +2135,56 @@ local function setupBlizzard()
   round("Глаза",Vector3.new(0.16,0.16,0.12),body.Position+Vector3.new(side*0.33,2.55,-0.81),Color3.new(0,0,0),mom)
  end
  sign(body,"Мама Настя • макарошки и уют",Vector3.new(0,5,0))
+ -- A seated parent and a self-contained animated holiday television upstairs.
+ local function setupDad()
+  local dad=Instance.new("Model") dad.Name="Папа смотрит телевизор" dad.Parent=world
+  local origin=Vector3.new(x-12,18.2,z-12)
+  local torso=part("Папа",Vector3.new(2.8,3,1.5),origin,Color3.fromRGB(71,104,158),Enum.Material.Fabric,dad)
+  round("Голова папы",Vector3.new(1.8,2,1.8),origin+Vector3.new(0,2.4,0),Color3.fromRGB(243,199,163),dad)
+  round("Волосы папы",Vector3.new(1.9,0.7,1.8),origin+Vector3.new(0,3.1,0),Color3.fromRGB(72,49,40),dad)
+  for _,side in {-1,1} do
+   round("Глаза папы",Vector3.new(0.16,0.16,0.12),origin+Vector3.new(side*0.33,2.5,0.85),Color3.new(0,0,0),dad)
+   rod("Рука папы",origin+Vector3.new(side*1.6,0.8,0),origin+Vector3.new(side*1.6,-1,1.1),0.4,Color3.fromRGB(243,199,163),dad)
+   rod("Брюки папы",origin+Vector3.new(side*0.7,-1.5,0),origin+Vector3.new(side*0.7,-1.5,2.6),0.48,Color3.fromRGB(54,61,76),dad,Enum.Material.Fabric)
+   rod("Голень папы",origin+Vector3.new(side*0.7,-1.5,2.6),origin+Vector3.new(side*0.7,-3,2.6),0.4,Color3.fromRGB(54,61,76),dad)
+   part("Тапочки папы",Vector3.new(1,0.5,1.6),origin+Vector3.new(side*0.7,-3.2,2.9),green,Enum.Material.Fabric,dad)
+  end
+  local remote=part("Пульт телевизора",Vector3.new(0.4,0.15,0.9),origin+Vector3.new(1.6,-0.8,1.2),Color3.fromRGB(30,33,40),nil,dad)
+  for _,item in dad:GetDescendants() do
+   if item:IsA("BasePart") and item~=torso then
+    local weld=Instance.new("WeldConstraint") weld.Part0,weld.Part1,weld.Parent=torso,item,torso
+   end
+  end
+  local cabinet=build("Тумба телевизора",Vector3.new(11,2,3),Vector3.new(-12,15.8,3))
+  local tv=build("Телевизор",Vector3.new(11,6.4,0.5),Vector3.new(-12,20,3),Color3.fromRGB(26,31,40),Enum.Material.SmoothPlastic)
+  local screen=Instance.new("SurfaceGui") screen.Face=Enum.NormalId.Back screen.CanvasSize=Vector2.new(660,360) screen.Parent=tv
+  -- Dad sits behind the screen's front face (negative Z).
+  screen.Face=Enum.NormalId.Front
+  local picture=Instance.new("TextLabel") picture.Size=UDim2.fromScale(1,1)
+  picture.BackgroundColor3=Color3.fromRGB(19,45,73) picture.TextColor3=snow picture.TextSize=38
+  picture.Text="❄ НОВОГОДНИЙ КАНАЛ ❄" picture.Parent=screen
+  local frames={"❄ НОВОГОДНИЙ КАНАЛ ❄","☃ Зимняя сказка ☃","Ёлочка, огоньки и подарки!","С праздником! ♥"}
+  light(tv,Color3.fromRGB(137,193,255),15,0.35)
+  sign(torso,"Папа • смотрит новогодний телевизор",Vector3.new(0,5,0))
+  prompt(torso,"Поговорить с папой",function(player)
+   player:SetAttribute("WinterMessage","Папа: Присаживайся рядом! Смотрим новогоднюю передачу, пока снаружи метель.")
+  end)
+  local seat=Instance.new("Seat") seat.Name="Посмотреть телевизор с папой" seat.Size=Vector3.new(3,0.4,3)
+  seat.Position=origin+Vector3.new(3, -1.6,0) seat.Orientation=Vector3.new(0,180,0)
+  seat.Anchored=true seat.Transparency=1 seat.Parent=world
+  prompt(seat,"Сесть смотреть телевизор",function(player)
+   local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+   if humanoid and not seat.Occupant then seat:Sit(humanoid) end
+  end)
+  task.spawn(function()
+   local frame=1
+   while tv.Parent do
+    picture.Text=frames[frame] frame=frame%#frames+1
+    task.wait(4)
+   end
+  end)
+ end
+ setupDad()
  local state={active=false,elapsed=0,cycle=0,planted=0,trees=forestTrees}
  local function sheltered(pos)
   if math.abs(pos.X-x)<20.5 and math.abs(pos.Z-z)<18.5 and pos.Y>0 and pos.Y<26 then return true end
