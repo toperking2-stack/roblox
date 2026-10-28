@@ -158,6 +158,8 @@ end
 checkStorm()
 local function checkLeonPrank()
  root.Position=Vector3.new(224,4,-340)
+ local wasActive=stormState.active
+ stormState.active=true humanoid.Sit=true
  local health=humanoid.Health
  advance(16)
  local cloud=named('Мультяшное облачко Леона')
@@ -165,13 +167,19 @@ local function checkLeonPrank()
  assert(humanoid.Health==health,'prank causes no damage')
  assert(player:GetAttribute('CartoonSlime') and slimeState.effects[player],'prank applies temporary cartoon slime')
  interact(named('Душ в доме Леона'))
- assert(not player:GetAttribute('CartoonSlime') and not slimeState.effects[player],'shower removes tint and clouds')
+ assert(player:GetAttribute('CartoonSlime') and slimeState.effects[player],'cartoon slime persists after shower')
  advance(4)
  assert(not cloud.Parent,'cloud disappears automatically')
  local before=count('Мультяшное облачко Леона')
  advance(10)
  assert(count('Мультяшное облачко Леона')==before,'prank cooldown prevents spam')
- root.Position=Vector3.new(0,4,50)
+ root.Position=Vector3.new(0,4,50) humanoid.Sit=false
+ stormState.active=false advance(5)
+ assert(player:GetAttribute('CartoonSlime'),'slime persists beyond thirty seconds and storm end')
+ assert(not root:FindFirstChild('SlimeForce'),'slime does not add movement constraints')
+ humanoid.Health=0 services.RunService.Heartbeat:Fire(0.1)
+ assert(not slimeState.effects[player],'death clears cosmetic slime')
+ humanoid.Health=health stormState.active=wasActive
 end
 checkLeonPrank()
 local function checkSnowDrifts()
