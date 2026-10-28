@@ -332,6 +332,10 @@ flakes.Rotation=NumberRange.new(0,360)
 flakes.RotSpeed=NumberRange.new(-25,25)
 flakes.Acceleration=Vector3.new(1,-1,0)
 flakes.Parent=emitterPart
+local snowWaveParts={}
+for _,item in workspace:WaitForChild("WinterVillage"):WaitForChild("Огромная движущаяся волна снега"):GetDescendants() do
+ if item:IsA("BasePart") then table.insert(snowWaveParts,item) end
+end
 task.spawn(function()
  while emitterPart.Parent do
   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -350,6 +354,7 @@ task.spawn(function()
    flakes.Acceleration=storm and Vector3.new(35,-8,12) or Vector3.new(1,-1,0)
    if indoors and flakes.Enabled then flakes:Clear() end
    flakes.Enabled=not indoors
+   for _,item in snowWaveParts do item.LocalTransparencyModifier=indoors and 1 or 0 end
   end
   task.wait(0.3)
  end

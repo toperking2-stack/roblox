@@ -2136,6 +2136,29 @@ local function setupBlizzard()
  end
  sign(body,"Мама Настя • макарошки и уют",Vector3.new(0,5,0))
  -- A seated parent and a self-contained animated holiday television upstairs.
+ local function configureCatTV(tv,label)
+  local panel=Instance.new("Frame") panel.Name="Канал с котиками" panel.Size=UDim2.fromScale(1,1)
+  panel.BackgroundColor3=Color3.fromRGB(52,69,103) panel.Parent=label.Parent
+  local title=Instance.new("TextLabel") title.Size=UDim2.fromScale(1,0.22) title.BackgroundTransparency=1
+  title.Text="КОТИКИ ТВ • Мурр!" title.TextColor3=gold title.TextScaled=true title.Parent=panel
+  local cat=Instance.new("TextLabel") cat.Name="Котик на экране" cat.Size=UDim2.fromScale(0.65,0.65)
+  cat.BackgroundTransparency=1 cat.TextScaled=true cat.Parent=panel
+  local subtitle=Instance.new("TextLabel") subtitle.Size=UDim2.fromScale(1,0.17) subtitle.Position=UDim2.fromScale(0,0.83)
+  subtitle.BackgroundTransparency=1 subtitle.Text="Лапки, хвостики и уют ♥" subtitle.TextColor3=snow subtitle.TextScaled=true subtitle.Parent=panel
+  tv:SetAttribute("CatChannelEnabled",true)
+  prompt(tv,"Котики / новости",function(player)
+   local enabled=not tv:GetAttribute("CatChannelEnabled")
+   tv:SetAttribute("CatChannelEnabled",enabled) panel.Visible=enabled
+   player:SetAttribute("WinterMessage",enabled and "Включён канал с котиками!" or "Включены праздничные передачи и новости погоды")
+  end)
+  task.spawn(function()
+   local poses={"🐱","😺","😸","😻"} local frame=1
+   while tv.Parent do
+    cat.Text=poses[frame] cat.Position=UDim2.fromScale(0.17+math.sin(frame)*0.08,0.21)
+    frame=frame%#poses+1 task.wait(0.7)
+   end
+  end)
+ end
  local function setupDad()
   local dad=Instance.new("Model") dad.Name="Папа Егор смотрит телевизор" dad.Parent=world
   local origin=Vector3.new(x-12,18.2,z-12)
@@ -2165,6 +2188,7 @@ local function setupBlizzard()
   local picture=Instance.new("TextLabel") picture.Size=UDim2.fromScale(1,1)
   picture.BackgroundColor3=Color3.fromRGB(19,45,73) picture.TextColor3=snow picture.TextSize=38
   picture.Text="❄ НОВОГОДНИЙ КАНАЛ ❄" picture.Parent=screen
+  configureCatTV(tv,picture)
   local frames={"❄ НОВОГОДНИЙ КАНАЛ ❄","☃ Зимняя сказка ☃","Ёлочка, огоньки и подарки!","С праздником! ♥"}
   light(tv,Color3.fromRGB(137,193,255),15,0.35)
   sign(torso,"Папа Егор • смотрим телевизор вместе",Vector3.new(0,5,0))
@@ -2199,6 +2223,41 @@ local function setupBlizzard()
   return false
  end
  state.sheltered=sheltered
+ local function setupDoors()
+  local doors={}
+  local entrances={}
+  for _,center in houseCenters do table.insert(entrances,{center[1],center[2]+13,8,8,2.2}) end
+  table.insert(entrances,{x,z+19,10,9,1.5})
+  table.insert(entrances,{235,-320,14,14,1.6})
+  for index,entry in entrances do
+   local closed=Vector3.new(entry[1],entry[5]+entry[4]/2,entry[2])
+   local door=part("Дверь дома "..index,Vector3.new(entry[3]-0.3,entry[4],0.5),closed,wood,Enum.Material.WoodPlanks)
+   local handle=round("Золотая ручка двери",Vector3.new(0.3,0.3,0.4),closed+Vector3.new(-entry[3]/2+0.8,-0.5,0.4),gold,door)
+   door.CanCollide=true
+   door:SetAttribute("Open",false)
+   local function toggle(player)
+    local opened=not door:GetAttribute("Open")
+    if not opened then
+     for _,other in Players:GetPlayers() do
+      local root=other.Character and other.Character:FindFirstChild("HumanoidRootPart")
+      if root and math.abs(root.Position.X-closed.X)<entry[3]/2+1 and math.abs(root.Position.Z-closed.Z)<2 then
+       player:SetAttribute("WinterMessage","Отойди от дверного проёма, чтобы закрыть дверь") return
+      end
+     end
+    end
+    door:SetAttribute("Open",opened) door.CanCollide=not opened
+    door.Position=closed+Vector3.new(opened and entry[3] or 0,0,0)
+    handle.Position=door.Position+Vector3.new(-entry[3]/2+0.8,-0.5,0.4)
+   end
+   -- A stationary jamb keeps the control reachable with the panel slid aside.
+   local control=part("Ручка у входа "..index,Vector3.new(0.35,0.5,0.5),closed+Vector3.new(entry[3]/2+0.5,-0.5,0.8),gold)
+   prompt(control,"Открыть / закрыть дверь",toggle)
+   table.insert(doors,{panel=door,control=control})
+  end
+  state.doors=doors
+ end
+ setupDoors()
+
  prompt(body,"Попросить макарошки",function(player)
   player:SetAttribute("WinterMessage",state.active and "Настя: Буря снаружи! Садись, кушай макарошки и оставайся до её конца." or "Настя: Заходи, я приготовила макарошки! Здесь всегда можно отдохнуть.")
   if player.Backpack:FindFirstChild("Макарошки") or player.Character:FindFirstChild("Макарошки") then return end
@@ -2351,6 +2410,7 @@ local function setupBlizzard()
   local label=Instance.new("TextLabel") label.Size=UDim2.fromScale(1,1) label.TextWrapped=true label.TextSize=44
   label.BackgroundColor3=Color3.fromRGB(35,65,48) label.TextColor3=yellow label.Parent=surface
   label.Text="ЛИМОННЫЙ КАНАЛ • Добро пожаловать, Леона!"
+  configureCatTV(tv,label)
   for _,offset in {-4,4} do
    local seat=Instance.new("Seat") seat.Name="Смотреть лимонный телевизор" seat.Size=Vector3.new(3,0.4,3)
    seat.Position=center+Vector3.new(offset,4.2,10) seat.Anchored=true seat.Transparency=1 seat.Parent=world
@@ -2360,7 +2420,7 @@ local function setupBlizzard()
    end)
   end
   local friend=Instance.new("Model") friend.Name="Житель лимонного дома" friend.Parent=world
-  local body=part("Друг Леоны",Vector3.new(2.5,3,1.4),center+Vector3.new(-13,4.6,5),green,Enum.Material.Fabric,friend)
+  local body=part("Леон",Vector3.new(2.5,3,1.4),center+Vector3.new(-13,4.6,5),green,Enum.Material.Fabric,friend)
   round("Голова друга",Vector3.new(1.8,2,1.8),body.Position+Vector3.new(0,2.4,0),Color3.fromRGB(245,203,172),friend)
   round("Шапка друга",Vector3.new(2,1,2),body.Position+Vector3.new(0,3.2,0),yellow,friend)
   for _,side in {-1,1} do
@@ -2368,8 +2428,8 @@ local function setupBlizzard()
    part("Нога друга",Vector3.new(0.8,1.7,1),body.Position+Vector3.new(side*0.6,-2,0),gold,nil,friend)
    round("Глаз друга",Vector3.new(0.16,0.16,0.15),body.Position+Vector3.new(side*0.3,2.5,0.85),Color3.new(0,0,0),friend)
   end
-  sign(body,"Друг Леоны",Vector3.new(0,5,0))
-  prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage","Друг Леоны: Привет! Поплаваем в подарке? А потом посмотрим лимонный канал вместе!") end)
+  sign(body,"Леон",Vector3.new(0,5,0))
+  prompt(body,"Поговорить",function(player) player:SetAttribute("WinterMessage","Леон: Привет! Поплаваем в подарке? А потом посмотрим лимонный канал вместе!") end)
   sign(tv,"Лимонный дом Леоны",Vector3.new(0,11,0)) light(tv,gold,35,0.7)
   task.spawn(function()
    local news=false
@@ -2803,6 +2863,10 @@ flakes.Rotation=NumberRange.new(0,360)
 flakes.RotSpeed=NumberRange.new(-25,25)
 flakes.Acceleration=Vector3.new(1,-1,0)
 flakes.Parent=emitterPart
+local snowWaveParts={}
+for _,item in workspace:WaitForChild("WinterVillage"):WaitForChild("Огромная движущаяся волна снега"):GetDescendants() do
+ if item:IsA("BasePart") then table.insert(snowWaveParts,item) end
+end
 task.spawn(function()
  while emitterPart.Parent do
   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -2821,6 +2885,7 @@ task.spawn(function()
    flakes.Acceleration=storm and Vector3.new(35,-8,12) or Vector3.new(1,-1,0)
    if indoors and flakes.Enabled then flakes:Clear() end
    flakes.Enabled=not indoors
+   for _,item in snowWaveParts do item.LocalTransparencyModifier=indoors and 1 or 0 end
   end
   task.wait(0.3)
  end
